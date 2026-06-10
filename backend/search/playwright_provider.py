@@ -10,9 +10,14 @@ import urllib.parse
 
 from playwright.async_api import async_playwright
 
-from search.base import SearchProvider, SourceDocument, SourceType
+from search.base import SearchProvider, SearchQuery, SourceDocument, SourceType
+from shared.limiter import DomainThrottle
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Namu.Wiki 최소 간격 throttle
+_namu_throttle = DomainThrottle(min_interval_s=settings.NAMU_MIN_INTERVAL_S)
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -86,7 +91,7 @@ class PlaywrightProvider(SearchProvider):
         candidates = [f"{query}(영화)", query]
         return [f"{base}/{urllib.parse.quote(t)}" for t in candidates]
 
-    async def search(self, query: str, num: int = 5) -> list[SourceDocument]:
+    async def search(self, query: SearchQuery, num: int = 5) -> list[SourceDocument]:
         """Namu.Wiki 직접 문서 URL 접근 → SourceDocument 반환."""
         results = []
 
@@ -106,8 +111,9 @@ class PlaywrightProvider(SearchProvider):
                     "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
                 )
 
-                for url in self._build_urls(query):
+                for url in self._build_urls(query.title):
                     try:
+                        await _namu_throttle.wait()
                         logger.info(f"[playwright] 접속: {url}")
                         resp = await page.goto(
                             url,

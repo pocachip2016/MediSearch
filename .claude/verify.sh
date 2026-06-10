@@ -7,6 +7,12 @@ cd "$(dirname "$0")/../backend"
 PYTEST=/home/ktalpha/Work/venv/bin/pytest
 
 case "$1" in
+  step1)
+    $PYTEST tests/test_tmdb_provider.py tests/test_kmdb_provider.py tests/test_playwright_provider.py tests/test_api.py -v
+    ;;
+  step2)
+    $PYTEST tests/test_api.py -v
+    ;;
   step4)
     $PYTEST tests/test_evaluator.py -v
     ;;

@@ -32,5 +32,10 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # 동시성/throttle — Ollama/Namu.wiki 부하 제어
+    MAX_CONCURRENT_EVALS: int = 1  # Ollama 직렬화 (1 = 완전 직렬)
+    EVAL_QUEUE_TIMEOUT_S: int = 300  # 대기열 타임아웃 (초과 시 429)
+    NAMU_MIN_INTERVAL_S: float = 20.0  # Namu.wiki 최소 간격 (초/요청)
+
 
 settings = Settings()
