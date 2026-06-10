@@ -10,18 +10,30 @@ import re
 
 from sqlalchemy import text
 
-from search.base import SearchProvider, SourceDocument, SourceType
+from search.base import SearchProvider, SearchQuery, SourceDocument, SourceType
 from shared.mediax_db import get_mediax_session
 
 logger = logging.getLogger(__name__)
 
-# 후보 수집: ILIKE 부분매칭 (마크업 사이에 있어도 매칭됨)
-_QUERY = text(
+# kmdb_docid 정확 조회 (mediaX 외부ID 보유 시)
+_QUERY_BY_DOCID = text(
+    """
+    SELECT title, synopsis, prod_year, nation, genre
+    FROM kmdb_movie_cache
+    WHERE docid = :docid
+      AND synopsis IS NOT NULL AND synopsis <> ''
+    LIMIT 1
+    """
+)
+
+# 제목 ILIKE 폴백 + 연도 필터 옵션
+_QUERY_BY_TITLE = text(
     """
     SELECT title, synopsis, prod_year, nation, genre
     FROM kmdb_movie_cache
     WHERE synopsis IS NOT NULL AND synopsis <> ''
       AND title ILIKE :like
+      AND (:year_min IS NULL OR COALESCE(prod_year::int, 0) BETWEEN :year_min AND :year_max)
     ORDER BY COALESCE(prod_year, 0) DESC
     LIMIT 20
     """
@@ -46,16 +58,31 @@ class KmdbProvider(SearchProvider):
     def provider_name(self) -> str:
         return "kmdb"
 
-    async def search(self, query: str, num: int = 1) -> list[SourceDocument]:
+    async def search(self, query: SearchQuery, num: int = 1) -> list[SourceDocument]:
         session = get_mediax_session()
         if session is None:
             logger.warning("[kmdb] mediaX 세션 없음 — 빈 결과")
             return []
 
         try:
-            rows = session.execute(_QUERY, {"like": f"%{query}%"}).fetchall()
+            if query.kmdb_docid is not None:
+                rows = session.execute(
+                    _QUERY_BY_DOCID, {"docid": query.kmdb_docid}
+                ).fetchall()
+                logger.info(f"[kmdb] docid 정확조회: {query.kmdb_docid!r}")
+            else:
+                year_min = query.production_year - 1 if query.production_year else None
+                year_max = query.production_year + 1 if query.production_year else None
+                rows = session.execute(
+                    _QUERY_BY_TITLE,
+                    {
+                        "like": f"%{query.title}%",
+                        "year_min": year_min,
+                        "year_max": year_max,
+                    },
+                ).fetchall()
         except Exception as e:
-            logger.error(f"[kmdb] 쿼리 실패 {query!r}: {e}")
+            logger.error(f"[kmdb] 쿼리 실패 {query.title!r}: {e}")
             return []
         finally:
             session.close()
@@ -66,18 +93,18 @@ class KmdbProvider(SearchProvider):
             title, synopsis, prod_year, nation, genre = row
             clean_title = clean_markup(title)
             doc = SourceDocument(
-                url=f"https://www.kmdb.or.kr/search?query={query}",
+                url=f"https://www.kmdb.or.kr/search?query={query.title}",
                 title=f"{clean_title} ({prod_year or '?'})",
                 text=clean_markup(synopsis),
                 source_domain="kmdb.or.kr",
                 source_type=SourceType.synopsis,
                 trust_score=0.85,  # 공식 메타
             )
-            (exact if clean_title == query else partial).append(doc)
+            (exact if clean_title == query.title else partial).append(doc)
 
         docs = (exact or partial)[:num]
         logger.info(
-            f"[kmdb] {query!r} → {len(docs)}개 "
+            f"[kmdb] {query.title!r} → {len(docs)}개 "
             f"(exact={len(exact)}, partial={len(partial)})"
         )
         return docs

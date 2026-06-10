@@ -9,6 +9,7 @@ CI skip:
 import pytest
 
 from search.playwright_provider import PlaywrightProvider
+from search.base import SearchQuery
 
 
 PROVIDER = PlaywrightProvider(headless=True, timeout_ms=20000)
@@ -48,7 +49,7 @@ async def test_crawl_result_fields(movie: str):
 @pytest.mark.asyncio
 async def test_crawl_movie_title_in_result():
     """기생충 검색 시 반환 title에 '기생충' 포함."""
-    results = await PROVIDER.search("기생충", num=5)
+    results = await PROVIDER.search(SearchQuery(title="기생충"), num=5)
     assert results
     assert "기생충" in results[0].title
 

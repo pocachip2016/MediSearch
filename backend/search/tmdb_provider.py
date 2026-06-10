@@ -9,18 +9,30 @@ import logging
 
 from sqlalchemy import text
 
-from search.base import SearchProvider, SourceDocument, SourceType
+from search.base import SearchProvider, SearchQuery, SourceDocument, SourceType
 from shared.mediax_db import get_mediax_session
 
 logger = logging.getLogger(__name__)
 
-# 정확매칭 우선 + 부분매칭 폴백, 인기/관객수 랭킹
-_QUERY = text(
+# tmdb_id 정확 조회 (mediaX외부ID 보유 시 사용)
+_QUERY_BY_ID = text(
+    """
+    SELECT title, overview, vote_count, popularity, release_date
+    FROM tmdb_movie_cache
+    WHERE id = :tmdb_id
+      AND overview IS NOT NULL AND overview <> ''
+    LIMIT 1
+    """
+)
+
+# 제목 ILIKE 폴백 — 인기/관객수 랭킹 + 연도 필터 옵션
+_QUERY_BY_TITLE = text(
     """
     SELECT title, overview, vote_count, popularity, release_date
     FROM tmdb_movie_cache
     WHERE overview IS NOT NULL AND overview <> ''
       AND (title = :q OR original_title = :q OR title ILIKE :like)
+      AND (:year_min IS NULL OR EXTRACT(YEAR FROM release_date) BETWEEN :year_min AND :year_max)
     ORDER BY
       (CASE WHEN title = :q OR original_title = :q THEN 0 ELSE 1 END),
       COALESCE(vote_count, 0) DESC,
@@ -43,18 +55,33 @@ class TmdbProvider(SearchProvider):
     def provider_name(self) -> str:
         return "tmdb"
 
-    async def search(self, query: str, num: int = 2) -> list[SourceDocument]:
+    async def search(self, query: SearchQuery, num: int = 2) -> list[SourceDocument]:
         session = get_mediax_session()
         if session is None:
             logger.warning("[tmdb] mediaX 세션 없음 — 빈 결과")
             return []
 
         try:
-            rows = session.execute(
-                _QUERY, {"q": query, "like": f"%{query}%", "num": num}
-            ).fetchall()
+            if query.tmdb_id is not None:
+                rows = session.execute(
+                    _QUERY_BY_ID, {"tmdb_id": query.tmdb_id}
+                ).fetchall()
+                logger.info(f"[tmdb] ID 정확조회: tmdb_id={query.tmdb_id}")
+            else:
+                year_min = query.production_year - 1 if query.production_year else None
+                year_max = query.production_year + 1 if query.production_year else None
+                rows = session.execute(
+                    _QUERY_BY_TITLE,
+                    {
+                        "q": query.title,
+                        "like": f"%{query.title}%",
+                        "year_min": year_min,
+                        "year_max": year_max,
+                        "num": num,
+                    },
+                ).fetchall()
         except Exception as e:
-            logger.error(f"[tmdb] 쿼리 실패 {query!r}: {e}")
+            logger.error(f"[tmdb] 쿼리 실패 {query.title!r}: {e}")
             return []
         finally:
             session.close()
@@ -65,7 +92,7 @@ class TmdbProvider(SearchProvider):
             year = release_date.year if release_date else "?"
             docs.append(
                 SourceDocument(
-                    url=f"https://www.themoviedb.org/search?query={query}",
+                    url=f"https://www.themoviedb.org/search?query={query.title}",
                     title=f"{title} ({year})",
                     text=overview or "",
                     source_domain="themoviedb.org",
@@ -74,5 +101,5 @@ class TmdbProvider(SearchProvider):
                 )
             )
 
-        logger.info(f"[tmdb] {query!r} → {len(docs)}개")
+        logger.info(f"[tmdb] {query.title!r} → {len(docs)}개")
         return docs

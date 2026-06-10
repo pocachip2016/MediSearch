@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from search.playwright_provider import PlaywrightProvider
-from search.base import SourceType
+from search.base import SearchQuery, SourceType
+
+
+def _sq(title: str) -> SearchQuery:
+    return SearchQuery(title=title)
 
 
 @pytest.fixture
@@ -51,7 +55,7 @@ async def test_search_success(provider):
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
         mock_ap.return_value = mock_pw
-        results = await provider.search("기생충", num=5)
+        results = await provider.search(_sq("기생충"), num=5)
 
     assert len(results) == 1
     assert results[0].title == "기생충(영화)"
@@ -95,7 +99,7 @@ async def test_search_falls_back_to_second_url(provider):
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
         mock_ap.return_value = mock_pw
-        results = await provider.search("씬시어리티", num=5)
+        results = await provider.search(_sq("씬시어리티"), num=5)
 
     assert len(results) == 1
     assert results[0].title == "씬시어리티"
@@ -121,7 +125,7 @@ async def test_search_all_urls_fail(provider):
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
         mock_ap.return_value = mock_pw
-        results = await provider.search("존재하지않는영화xyz", num=5)
+        results = await provider.search(_sq("존재하지않는영화xyz"), num=5)
 
     assert len(results) == 0
 
@@ -145,6 +149,6 @@ async def test_search_timeout_returns_empty(provider):
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
         mock_ap.return_value = mock_pw
-        results = await provider.search("test", num=5)
+        results = await provider.search(_sq("test"), num=5)
 
     assert len(results) == 0

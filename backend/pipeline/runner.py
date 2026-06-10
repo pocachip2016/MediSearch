@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from models import MovieFacet, SearchSource, SourceType
 from pipeline.evaluator import EvaluationEngine
-from search.base import SearchProvider
+from search.base import SearchProvider, SearchQuery
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +27,13 @@ class PipelineRunner:
         self.evaluator = evaluator
         self.db = db
 
-    async def run(self, query: str) -> dict:
-        """query → facet dict 반환. 오류 시 빈 facet + 로깅.
-
-        Returns:
-            {
-                "movie_query": str,
-                "facet": dict (validate_movie_facet 통과),
-                "source_count": int,
-                "facet_id": int (저장된 MovieFacet.id),
-            }
-        """
+    async def run(self, query: str | SearchQuery) -> dict:
+        """query → facet dict 반환. 오류 시 빈 facet + 로깅."""
+        sq = SearchQuery.from_text(query) if isinstance(query, str) else query
+        query = sq.title  # 이후 로직은 title 문자열 사용
         try:
             # 1. 검색
-            docs = await self.search_provider.search(query)
+            docs = await self.search_provider.search(sq)
             logger.info(f"[pipeline] {query} → {len(docs)}개 소스 검색")
 
             # 2. 평가 (facet JSON 생성)

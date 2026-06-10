@@ -5,12 +5,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from search.tmdb_provider import TmdbProvider, _trust_score
-from search.base import SourceType
+from search.base import SearchQuery, SourceType
 
 
 @pytest.fixture
 def provider():
     return TmdbProvider()
+
+
+def _sq(title="기생충", **kwargs) -> SearchQuery:
+    return SearchQuery(title=title, **kwargs)
 
 
 def test_provider_name(provider):
@@ -36,7 +40,7 @@ async def test_search_maps_rows(provider):
         ("기생충", "전원백수 기택 가족...", 20693, 34.6, datetime.date(2019, 5, 30)),
     ]
     with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
 
     assert len(docs) == 1
     d = docs[0]
@@ -50,7 +54,7 @@ async def test_search_maps_rows(provider):
 @pytest.mark.asyncio
 async def test_search_no_session_returns_empty(provider):
     with patch("search.tmdb_provider.get_mediax_session", return_value=None):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
     assert docs == []
 
 
@@ -59,7 +63,7 @@ async def test_search_query_error_returns_empty(provider):
     session = MagicMock()
     session.execute.side_effect = Exception("db error")
     with patch("search.tmdb_provider.get_mediax_session", return_value=session):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
     assert docs == []
     session.close.assert_called_once()
 
@@ -68,5 +72,19 @@ async def test_search_query_error_returns_empty(provider):
 async def test_search_null_release_date(provider):
     rows = [("무제", "줄거리", 5, 1.0, None)]
     with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
-        docs = await provider.search("무제")
+        docs = await provider.search(_sq("무제"))
     assert docs[0].title == "무제 (?)"
+
+
+@pytest.mark.asyncio
+async def test_search_by_tmdb_id_uses_id_query(provider):
+    """tmdb_id 있을 때 ID 정확조회 쿼리 사용 확인."""
+    rows = [("기생충", "시놉시스", 20000, 30.0, datetime.date(2019, 5, 30))]
+    session = _mock_session(rows)
+    with patch("search.tmdb_provider.get_mediax_session", return_value=session):
+        docs = await provider.search(_sq("기생충", tmdb_id=496243))
+
+    assert len(docs) == 1
+    # ID 쿼리는 _QUERY_BY_ID 사용 — execute 첫 번째 인자 확인
+    call_text = str(session.execute.call_args[0][0])
+    assert "id = :tmdb_id" in call_text

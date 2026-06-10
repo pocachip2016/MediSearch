@@ -3,7 +3,7 @@
 SourceDocument.text는 파이프라인 통과용 임시 필드 → DB 저장 안 함.
 """
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -13,6 +13,20 @@ class SourceType(str, Enum):
     expert_review = "expert_review"
     user_review = "user_review"
     other = "other"
+
+
+@dataclass
+class SearchQuery:
+    """구조화된 검색 요청. ID가 있으면 title ILIKE 대신 정확 조회에 사용."""
+    title: str
+    production_year: int | None = None
+    tmdb_id: int | None = None
+    kmdb_docid: str | None = None
+    kobis_movie_cd: str | None = None
+
+    @classmethod
+    def from_text(cls, text: str) -> "SearchQuery":
+        return cls(title=text)
 
 
 @dataclass
@@ -40,14 +54,11 @@ class SearchProvider(ABC):
         pass
 
     @abstractmethod
-    async def search(self, query: str, num: int = 5) -> list[SourceDocument]:
-        """영화 제목으로 검색 → SourceDocument 리스트 반환.
+    async def search(self, query: SearchQuery, num: int = 5) -> list[SourceDocument]:
+        """영화 검색 → SourceDocument 리스트 반환.
 
         Args:
-            query: 영화 제목
+            query: 구조화된 검색 요청 (ID 필드 있으면 정확 조회)
             num: 반환할 최대 결과 수
-
-        Returns:
-            SourceDocument 리스트
         """
         pass

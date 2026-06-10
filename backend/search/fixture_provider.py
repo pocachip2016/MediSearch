@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 
-from search.base import SearchProvider, SourceDocument, SourceType
+from search.base import SearchProvider, SearchQuery, SourceDocument, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +43,12 @@ class FixtureProvider(SearchProvider):
     def provider_name(self) -> str:
         return "fixture"
 
-    async def search(self, query: str, num: int = 5) -> list[SourceDocument]:
+    async def search(self, query: SearchQuery, num: int = 5) -> list[SourceDocument]:
         """영화 제목으로 fixture 데이터 반환."""
-        # 정확한 제목 매칭 시도
-        sources = self.data.get(query, [])
+        sources = self.data.get(query.title, [])
 
         if not sources:
-            logger.warning(f"Fixture 데이터 없음: {query}")
+            logger.warning(f"Fixture 데이터 없음: {query.title}")
             return []
 
         # num 개까지 반환
@@ -65,5 +64,5 @@ class FixtureProvider(SearchProvider):
             )
             docs.append(doc)
 
-        logger.info(f"✓ Fixture 검색: {query} → {len(docs)}개 결과")
+        logger.info(f"✓ Fixture 검색: {query.title} → {len(docs)}개 결과")
         return docs

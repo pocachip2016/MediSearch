@@ -13,7 +13,7 @@ from models import MovieFacet, SearchSource
 from pipeline.evaluator import EvaluationEngine
 from pipeline.facet_merge import merge_facets
 from pipeline.facets import attach_coverage, empty_facet
-from search.base import SearchProvider
+from search.base import SearchProvider, SearchQuery
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +40,15 @@ class MultiSourceRunner:
         self.evaluator = evaluator
         self.db = db
 
-    async def run(self, query: str) -> dict:
+    async def run(self, query: str | SearchQuery) -> dict:
+        sq = SearchQuery.from_text(query) if isinstance(query, str) else query
         all_docs = []
         entries: list[tuple[dict, float]] = []
         source_types: list[str] = []
 
         for provider in self.providers:
             try:
-                docs = await provider.search(query)
+                docs = await provider.search(sq)
             except Exception as e:
                 logger.warning(f"[multi] {provider.provider_name} 검색 실패: {e}")
                 continue
@@ -62,7 +63,7 @@ class MultiSourceRunner:
             p_trust = sum(d.trust_score for d in docs) / len(docs)
 
             try:
-                facet = await self.evaluator.evaluate(query, docs)
+                facet = await self.evaluator.evaluate(sq.title, docs)
                 entries.append((facet, p_trust))
                 logger.info(
                     f"[multi] {provider.provider_name} → {len(docs)}개 "
@@ -72,20 +73,20 @@ class MultiSourceRunner:
                 logger.warning(f"[multi] {provider.provider_name} 평가 실패: {e}")
 
         if not entries:
-            logger.warning(f"[multi] {query!r} — 모든 provider 실패, 빈 facet 반환")
+            logger.warning(f"[multi] {sq.title!r} — 모든 provider 실패, 빈 facet 반환")
             merged = attach_coverage(empty_facet(), [])
         else:
             merged = merge_facets(entries, source_types)
             logger.info(
-                f"[multi] {query!r} → {len(entries)}개 소스 병합 "
+                f"[multi] {sq.title!r} → {len(entries)}개 소스 병합 "
                 f"(confidence={merged.get('confidence')})"
             )
 
-        source_count = await self._save_sources(query, all_docs)
-        facet_id = await self._save_facet(query, merged, source_count)
+        source_count = await self._save_sources(sq.title, all_docs)
+        facet_id = await self._save_facet(sq.title, merged, source_count)
 
         return {
-            "movie_query": query,
+            "movie_query": sq.title,
             "facet": merged,
             "source_count": source_count,
             "facet_id": facet_id,

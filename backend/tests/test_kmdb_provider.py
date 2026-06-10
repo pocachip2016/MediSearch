@@ -4,12 +4,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from search.kmdb_provider import KmdbProvider, clean_markup
-from search.base import SourceType
+from search.base import SearchQuery, SourceType
 
 
 @pytest.fixture
 def provider():
     return KmdbProvider()
+
+
+def _sq(title="기생충", **kwargs) -> SearchQuery:
+    return SearchQuery(title=title, **kwargs)
 
 
 def test_provider_name(provider):
@@ -38,7 +42,7 @@ async def test_search_prefers_exact_after_clean(provider):
         ("!HS 기생충 !HE", "전원백수 기택 가족...", 2019, "한국", "드라마"),
     ]
     with patch("search.kmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
 
     assert len(docs) == 1
     assert docs[0].title == "기생충 (2019)"
@@ -53,7 +57,7 @@ async def test_search_partial_fallback(provider):
     """정확매칭 없으면 부분매칭 폴백."""
     rows = [("마약 !HS 기생충 !HE", "마약 줄거리", 2019, "한국", "범죄")]
     with patch("search.kmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
     assert len(docs) == 1
     assert docs[0].title == "마약 기생충 (2019)"
 
@@ -61,7 +65,7 @@ async def test_search_partial_fallback(provider):
 @pytest.mark.asyncio
 async def test_search_no_session_returns_empty(provider):
     with patch("search.kmdb_provider.get_mediax_session", return_value=None):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
     assert docs == []
 
 
@@ -70,6 +74,19 @@ async def test_search_query_error_returns_empty(provider):
     session = MagicMock()
     session.execute.side_effect = Exception("db error")
     with patch("search.kmdb_provider.get_mediax_session", return_value=session):
-        docs = await provider.search("기생충")
+        docs = await provider.search(_sq("기생충"))
     assert docs == []
     session.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_search_by_docid_uses_docid_query(provider):
+    """kmdb_docid 있을 때 docid 정확조회 쿼리 사용 확인."""
+    rows = [("!HS 기생충 !HE", "시놉시스", 2019, "한국", "드라마")]
+    session = _mock_session(rows)
+    with patch("search.kmdb_provider.get_mediax_session", return_value=session):
+        docs = await provider.search(_sq("기생충", kmdb_docid="K-20191234"))
+
+    assert len(docs) == 1
+    call_text = str(session.execute.call_args[0][0])
+    assert "docid = :docid" in call_text
