@@ -1,0 +1,102 @@
+{
+  "기생충": [
+    {
+      "url": "https://example.com/synopsis/parasite",
+      "title": "기생충 - 공식 시놉시스",
+      "text": "평범한 반지하 가정 김씨 일가의 삶이 일변한다. 아이들이 우연히 박 사장 저택의 가정교사 자리를 얻으면서 시작된 일. 하나하나 가족들을 박 가족의 생활 속으로 슬며시 밀어 넣는 김씨 일가. 그들의 계획은 완벽했고, 저택의 파티 날, 모든 것이 드러난다.",
+      "source_domain": "example.com",
+      "source_type": "synopsis",
+      "trust_score": 0.95
+    },
+    {
+      "url": "https://example.com/review/expert/parasite-1",
+      "title": "영화평론가 A: 기생충의 계급 고발",
+      "text": "봉준호 감독의 기생충은 단순한 스릴러를 넘어 현대 자본주의 사회의 불평등을 신랄하게 풍자한 걸작이다. 촘촘한 구성과 배우들의 완벽한 연기가 어우러져 관객들을 영화에 완전히 빨아들인다. 한국 영화의 또 다른 경지를 보여준 작품.",
+      "source_domain": "example.com",
+      "source_type": "expert_review",
+      "trust_score": 0.9
+    },
+    {
+      "url": "https://example.com/review/expert/parasite-2",
+      "title": "영화평론가 B: 기생충과 현대극",
+      "text": "기생충은 극영화의 정수를 보여준다. 초반부 코미디 톤에서 점진적으로 긴장감 넘치는 드라마로 변모하는 톤의 변화가 압권이다. 각 배우의 캐릭터 몰입도가 탁월하며, 특히 조 연기의 섬세함이 돋보인다.",
+      "source_domain": "example.com",
+      "source_type": "expert_review",
+      "trust_score": 0.88
+    },
+    {
+      "url": "https://example.com/review/user/parasite-1",
+      "title": "관객 리뷰 1",
+      "text": "정말 재미있게 봤어요! 처음엔 약간 답답하지만 점점 빠져든다. 스트레스 받는 영화지만 한국 영화의 수준을 느낄 수 있어서 좋았습니다.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.75
+    },
+    {
+      "url": "https://example.com/review/user/parasite-2",
+      "title": "관객 리뷰 2",
+      "text": "명작이라는 평가에 기대하고 봤는데 정말 기대를 저버리지 않았다. 계급 차이를 이렇게 섬세하게 표현한 작품이 있을까? 여러 번 봐도 좋을 것 같다.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.8
+    },
+    {
+      "url": "https://example.com/review/user/parasite-3",
+      "title": "관객 리뷰 3",
+      "text": "좋긴 한데 약간 길었어요. 내용이 불편하긴 하지만 그게 영화의 의도인 것 같고, 배우들의 연기가 정말 좋습니다.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.72
+    }
+  ],
+  "씬시어리티": [
+    {
+      "url": "https://example.com/synopsis/sincerity",
+      "title": "씬시어리티 - 시놉시스",
+      "text": "20년 전 헤어진 두 연인이 재개발 지역에서 우연히 마주친다. 과거의 기억과 후회, 그리고 현재의 삶이 얽힌 하루 밤. 서울의 골목길을 배경으로 그들의 진심이 드러난다. 누군가를 진심으로 사랑하는 것이 무엇인지를 묻는 영화.",
+      "source_domain": "example.com",
+      "source_type": "synopsis",
+      "trust_score": 0.92
+    },
+    {
+      "url": "https://example.com/review/expert/sincerity-1",
+      "title": "영화평론가 C: 재회의 미학",
+      "text": "감성적이면서도 관조적인 시선으로 재개발 서울의 변화와 개인의 시간을 겹쳐낸 작품. 두 주인공의 무거운 침묵과 짧은 대사들이 관객의 감정을 섬세하게 건드린다. 현대적 멜로드라마의 새로운 가능성을 보여준다.",
+      "source_domain": "example.com",
+      "source_type": "expert_review",
+      "trust_score": 0.87
+    },
+    {
+      "url": "https://example.com/review/expert/sincerity-2",
+      "title": "영화평론가 D: 도시와 추억",
+      "text": "과거와 현재가 교차하는 이 영화는 도시 공간 자체를 인물처럼 다룬다. 재개발로 사라지는 골목골목, 그 속의 인물들의 뒷모습이 주는 울림이 크다. 한국 영화만이 표현할 수 있는 일상의 애틋함이 있다.",
+      "source_domain": "example.com",
+      "source_type": "expert_review",
+      "trust_score": 0.85
+    },
+    {
+      "url": "https://example.com/review/user/sincerity-1",
+      "title": "관객 리뷰 1",
+      "text": "아련한 감성을 좋아하는 사람이라면 강추! 빠르지 않은 호흡이지만 그 안에 깊이가 있는 영화다. 서울의 골목을 다시 보게 해주는 작품.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.78
+    },
+    {
+      "url": "https://example.com/review/user/sincerity-2",
+      "title": "관객 리뷰 2",
+      "text": "과거의 그 사람을 다시 만날 수 있다면? 그런 감정으로 봤다. 마지막 장면이 정말 좋았어요. 여운이 오래 남는 영화.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.81
+    },
+    {
+      "url": "https://example.com/review/user/sincerity-3",
+      "title": "관객 리뷰 3",
+      "text": "잠깐 졸았어요... 영상미는 좋은데 진전이 너무 느려서요. 그래도 감정 전달은 잘 되는 것 같습니다.",
+      "source_domain": "example.com",
+      "source_type": "user_review",
+      "trust_score": 0.68
+    }
+  ]
+}

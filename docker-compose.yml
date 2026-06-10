@@ -1,0 +1,25 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medisearch-api
+    ports:
+      - "8080:8000"
+    environment:
+      - ENV=development
+      # POC: SQLite (PostgreSQL은 Later 단계)
+      - DATABASE_URL=sqlite:///./medisearch_dev.db
+      - SEARCH_PROVIDER=fixture
+      # Ollama: WSL host에서 실행 중 (host.docker.internal → Windows Docker용)
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_TASK_MODEL=qwen2.5:7b
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes: {}
