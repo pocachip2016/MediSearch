@@ -22,6 +22,12 @@ case "$1" in
   stepA)
     $PYTEST tests/test_tmdb_provider.py tests/test_kmdb_provider.py -v
     ;;
+  step-c|stepC)
+    $PYTEST tests/test_multi_runner.py tests/test_api.py -v
+    ;;
+  score-tune)
+    $PYTEST tests/test_score_calibration.py tests/test_evaluator.py -v
+    ;;
   step9|stepB)
     $PYTEST tests/test_facet_merge.py -v
     ;;

@@ -4,9 +4,11 @@ from pydantic import BaseModel
 import logging
 
 from pipeline.evaluator import EvaluationEngine
+from pipeline.multi_runner import MultiSourceRunner
 from pipeline.runner import PipelineRunner
 from search.fixture_provider import FixtureProvider
 from search.playwright_provider import PlaywrightProvider
+from search.provider_factory import build_providers
 from shared.database import init_db, get_db
 from shared.config import settings
 
@@ -68,14 +70,20 @@ async def evaluate_movie(
     db=Depends(get_db),
 ):
     """영화 평가 파이프라인 실행: search → evaluate → save."""
-    # 설정에 따라 검색 제공자 선택
-    if settings.SEARCH_PROVIDER == "playwright":
-        search_provider = PlaywrightProvider(headless=True, timeout_ms=15000)
-    else:
-        search_provider = FixtureProvider()
-
     evaluator = EvaluationEngine()
-    runner = PipelineRunner(search_provider, evaluator, db)
+
+    provider_names = [p.strip() for p in settings.SEARCH_PROVIDERS.split(",") if p.strip()]
+    if provider_names:
+        # 멀티소스 앙상블
+        providers = build_providers(provider_names)
+        runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db)
+    else:
+        # 단일 provider (기존 경로)
+        if settings.SEARCH_PROVIDER == "playwright":
+            search_provider = PlaywrightProvider(headless=True, timeout_ms=15000)
+        else:
+            search_provider = FixtureProvider()
+        runner = PipelineRunner(search_provider, evaluator, db)
 
     result = await runner.run(req.query)
     return MovieEvaluateResponse(**result)
