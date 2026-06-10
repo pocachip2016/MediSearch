@@ -8,18 +8,31 @@ services:
     container_name: medisearch-api
     ports:
       - "8080:8000"
+    networks:
+      - default
     environment:
       - ENV=development
-      # POC: SQLite (PostgreSQL은 Later 단계)
       - DATABASE_URL=sqlite:///./medisearch_dev.db
-      - SEARCH_PROVIDER=fixture
-      # Ollama: WSL host에서 실행 중 (host.docker.internal → Windows Docker용)
-      - OLLAMA_URL=http://host.docker.internal:11434
+      # mediaX PostgreSQL (mediax_default 네트워크 내 postgres 서비스)
+      - MEDIAX_DATABASE_URL=postgresql+psycopg2://media_ax:media_ax@postgres:5432/media_ax
+      # mediaX Ollama (공유 GPU Ollama)
+      - OLLAMA_URL=http://ollama:11434
       - OLLAMA_TASK_MODEL=qwen2.5:7b
+      # 멀티소스 평가
+      - SEARCH_PROVIDERS=tmdb,kmdb,playwright
+      # 동시성/throttle
+      - MAX_CONCURRENT_EVALS=1
+      - EVAL_QUEUE_TIMEOUT_S=300
+      - NAMU_MIN_INTERVAL_S=20
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+networks:
+  default:
+    name: mediax_default
+    external: true
 
 volumes: {}
