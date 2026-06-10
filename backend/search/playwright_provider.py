@@ -1,21 +1,78 @@
-"""search/playwright_provider.py — Playwright 기반 실제 웹 크롤링 제공자.
+"""search/playwright_provider.py — Playwright 기반 Namu.Wiki 직접 문서 크롤러.
 
-Namu.Wiki 영화 검색을 예시로 구현. 타 사이트로 확장 가능.
+검색 엔드포인트(/search?q=)는 봇 차단 → 직접 문서 URL(/w/{title}) 방식 사용.
+CSS 클래스는 난독화되어 있으므로 h1/#app innerText 구조에만 의존.
 """
 from __future__ import annotations
 
 import logging
+import urllib.parse
+
 from playwright.async_api import async_playwright
 
 from search.base import SearchProvider, SourceDocument, SourceType
 
 logger = logging.getLogger(__name__)
 
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
+_OVERVIEW_JS = """() => {
+    const h2s = Array.from(document.querySelectorAll('h2'));
+    const overviewH2 = h2s.find(h => h.textContent.includes('개요'));
+    if (!overviewH2) return '';
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let collecting = false;
+    const texts = [];
+    const startEl = overviewH2;
+    const endEls = h2s.slice(h2s.indexOf(overviewH2) + 1);
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const parent = node.parentElement;
+        if (!collecting && parent && startEl.contains(parent)) {
+            collecting = true;
+        }
+        if (collecting && endEls.some(h => h.contains(parent))) break;
+        if (collecting) {
+            const t = node.textContent.trim();
+            if (t.length > 4) texts.push(t);
+        }
+    }
+    return texts.join(' ').slice(0, 1200);
+}"""
+
+_SYNOPSIS_JS = """() => {
+    const h2s = Array.from(document.querySelectorAll('h2'));
+    const synH2 = h2s.find(h => h.textContent.includes('시놉시스'));
+    if (!synH2) return '';
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let collecting = false;
+    const texts = [];
+    const startEl = synH2;
+    const endEls = h2s.slice(h2s.indexOf(synH2) + 1);
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const parent = node.parentElement;
+        if (!collecting && parent && startEl.contains(parent)) {
+            collecting = true;
+        }
+        if (collecting && endEls.some(h => h.contains(parent))) break;
+        if (collecting) {
+            const t = node.textContent.trim();
+            if (t.length > 4) texts.push(t);
+        }
+    }
+    return texts.join(' ').slice(0, 800);
+}"""
+
 
 class PlaywrightProvider(SearchProvider):
-    """Playwright 기반 실제 웹 크롤링 검색 제공자."""
+    """Namu.Wiki 직접 문서 URL 크롤러."""
 
-    def __init__(self, headless: bool = True, timeout_ms: int = 10000):
+    def __init__(self, headless: bool = True, timeout_ms: int = 15000):
         self.headless = headless
         self.timeout_ms = timeout_ms
 
@@ -23,82 +80,86 @@ class PlaywrightProvider(SearchProvider):
     def provider_name(self) -> str:
         return "playwright"
 
+    def _build_urls(self, query: str) -> list[str]:
+        """시도 순서: {query}(영화) → {query}"""
+        base = "https://namu.wiki/w"
+        candidates = [f"{query}(영화)", query]
+        return [f"{base}/{urllib.parse.quote(t)}" for t in candidates]
+
     async def search(self, query: str, num: int = 5) -> list[SourceDocument]:
-        """Namu.Wiki에서 영화 검색 → SourceDocument 리스트 반환."""
+        """Namu.Wiki 직접 문서 URL 접근 → SourceDocument 반환."""
         results = []
-        browser = None
 
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=self.headless)
-                page = await browser.new_page()
+                browser = await p.chromium.launch(
+                    headless=self.headless,
+                    args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+                )
+                context = await browser.new_context(
+                    user_agent=_USER_AGENT,
+                    viewport={"width": 1280, "height": 800},
+                    locale="ko-KR",
+                )
+                page = await context.new_page()
+                await page.add_init_script(
+                    "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
+                )
 
-                # Namu.Wiki 검색
-                search_url = f"https://namu.wiki/search?q={query}"
-                logger.info(f"[playwright] 검색: {search_url}")
-
-                try:
-                    await page.goto(
-                        search_url,
-                        wait_until="domcontentloaded",
-                        timeout=self.timeout_ms,
-                    )
-                except Exception as e:
-                    logger.error(f"[playwright] 페이지 로딩 실패: {e}")
-                    return []
-
-                # 검색 결과 파싱
-                try:
-                    # 나무위키 검색 결과 구조
-                    # <div class="search_item"> → <a class="wiki_link"> → title/href
-                    items = await page.query_selector_all("div.search_item")
-                    logger.info(f"[playwright] 검색 결과 {len(items)}개 발견")
-
-                    for item in items[:num]:
-                        try:
-                            # 제목 + URL
-                            link = await item.query_selector("a.wiki_link")
-                            if not link:
-                                continue
-
-                            href = await link.get_attribute("href")
-                            title_text = await link.inner_text()
-
-                            if not href or not title_text:
-                                continue
-
-                            # 절대 URL 구성
-                            url = href if href.startswith("http") else f"https://namu.wiki{href}"
-
-                            # 스니펫 (미리보기) 추출
-                            snippet_elem = await item.query_selector("div.desc")
-                            snippet = ""
-                            if snippet_elem:
-                                snippet = await snippet_elem.inner_text()
-
-                            # 신뢰도: 공식 위키는 높게 (영화 정보는 검증됨)
-                            doc = SourceDocument(
-                                url=url,
-                                title=title_text,
-                                text=snippet,
-                                source_domain="namu.wiki",
-                                source_type=SourceType.synopsis,
-                                trust_score=0.85,
-                            )
-                            results.append(doc)
-                            logger.info(f"✓ 크롤링: {title_text}")
-
-                        except Exception as e:
-                            logger.warning(f"[playwright] 아이템 파싱 오류: {e}")
+                for url in self._build_urls(query):
+                    try:
+                        logger.info(f"[playwright] 접속: {url}")
+                        resp = await page.goto(
+                            url,
+                            wait_until="networkidle",
+                            timeout=self.timeout_ms,
+                        )
+                        if resp and resp.status >= 400:
+                            logger.warning(f"[playwright] HTTP {resp.status}: {url}")
                             continue
 
-                except Exception as e:
-                    logger.error(f"[playwright] 결과 파싱 실패: {e}")
+                        # 에러 페이지 판별
+                        page_title = await page.title()
+                        if "찾을 수 없습니다" in page_title or "오류" in page_title:
+                            logger.info(f"[playwright] 에러 페이지 — 다음 URL 시도")
+                            continue
+
+                        # h1 대기 (렌더링 완료 기준)
+                        await page.wait_for_selector("h1", timeout=8000)
+
+                        title_text = await page.evaluate(
+                            "() => document.querySelector('h1')?.innerText || ''"
+                        )
+                        overview = await page.evaluate(_OVERVIEW_JS)
+                        synopsis = await page.evaluate(_SYNOPSIS_JS)
+
+                        combined_text = "\n\n".join(
+                            filter(None, [overview, synopsis])
+                        )
+                        if not combined_text:
+                            logger.warning(f"[playwright] 텍스트 추출 실패: {url}")
+                            continue
+
+                        doc = SourceDocument(
+                            url=url,
+                            title=title_text.strip(),
+                            text=combined_text,
+                            source_domain="namu.wiki",
+                            source_type=SourceType.synopsis,
+                            trust_score=0.85,
+                        )
+                        results.append(doc)
+                        logger.info(f"[playwright] ✓ 크롤링: {title_text!r}")
+                        break  # 첫 번째 유효 결과로 충분
+
+                    except Exception as e:
+                        logger.warning(f"[playwright] URL 실패 {url}: {e}")
+                        continue
 
                 await browser.close()
 
         except Exception as e:
             logger.error(f"[playwright] 브라우저 오류: {e}", exc_info=True)
 
-        logger.info(f"[playwright] {query} → {len(results)}개 문서 반환")
+        logger.info(f"[playwright] {query!r} → {len(results)}개 문서 반환")
         return results

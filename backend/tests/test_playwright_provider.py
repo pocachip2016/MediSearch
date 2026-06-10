@@ -1,5 +1,5 @@
 """tests/test_playwright_provider.py — PlaywrightProvider 테스트 (mock Playwright)."""
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -9,128 +9,142 @@ from search.base import SourceType
 
 @pytest.fixture
 def provider():
-    return PlaywrightProvider(headless=True, timeout_ms=10000)
+    return PlaywrightProvider(headless=True, timeout_ms=15000)
 
 
-@pytest.mark.asyncio
-async def test_playwright_provider_name(provider):
-    """provider_name 확인."""
+def test_provider_name(provider):
     assert provider.provider_name == "playwright"
 
 
+def test_build_urls(provider):
+    urls = provider._build_urls("기생충")
+    assert len(urls) == 2
+    assert "%EC%98%81%ED%99%94" in urls[0]  # 영화 인코딩 포함
+    assert urls[0].startswith("https://namu.wiki/w/")
+
+
 @pytest.mark.asyncio
-async def test_playwright_provider_search_success(provider):
-    """성공적인 검색 크롤링."""
-    # Mock async context manager
-    async def async_none(*args, **kwargs):
-        return None
-
-    async def async_str(val):
-        async def _coro():
-            return val
-        return await _coro()
-
-    # Mock page
+async def test_search_success(provider):
+    """유효 페이지 → SourceDocument 반환."""
     mock_page = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=AsyncMock(status=200))
+    mock_page.title = AsyncMock(return_value="기생충(영화) - 나무위키")
+    mock_page.wait_for_selector = AsyncMock()
+    mock_page.evaluate = AsyncMock(side_effect=[
+        "기생충(영화)",    # h1 innerText
+        "봉준호 감독의 7번째 장편. 반지하 가족 이야기.",  # overview
+        "전원백수 기택 가족이 부잣집에 잠입하면서...",    # synopsis
+    ])
+    mock_page.add_init_script = AsyncMock()
 
-    # Mock items with proper async mocks
-    mock_link1 = AsyncMock()
-    mock_link1.get_attribute = AsyncMock(return_value="/w/기생충 (영화)")
-    mock_link1.inner_text = AsyncMock(return_value="기생충 (영화)")
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
 
-    mock_snippet1 = AsyncMock()
-    mock_snippet1.inner_text = AsyncMock(
-        return_value="봉준호 감독 2019년 작품. 칸 황금종려상 수상."
-    )
-
-    mock_item1 = AsyncMock()
-    mock_item1.query_selector = AsyncMock(
-        side_effect=lambda x: mock_link1 if x == "a.wiki_link" else mock_snippet1
-    )
-
-    # Item 2
-    mock_link2 = AsyncMock()
-    mock_link2.get_attribute = AsyncMock(return_value="/w/기생충 (드라마)")
-    mock_link2.inner_text = AsyncMock(return_value="기생충 (드라마)")
-
-    mock_snippet2 = AsyncMock()
-    mock_snippet2.inner_text = AsyncMock(return_value="HBO 리메이크 작품.")
-
-    mock_item2 = AsyncMock()
-    mock_item2.query_selector = AsyncMock(
-        side_effect=lambda x: mock_link2 if x == "a.wiki_link" else mock_snippet2
-    )
-
-    mock_page.query_selector_all = AsyncMock(return_value=[mock_item1, mock_item2])
-    mock_page.goto = AsyncMock()
-    mock_page.close = AsyncMock()
-
-    # Mock browser
     mock_browser = AsyncMock()
-    mock_browser.new_page = AsyncMock(return_value=mock_page)
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
     mock_browser.close = AsyncMock()
 
-    # Mock async_playwright
-    mock_playwright = AsyncMock()
-    mock_playwright.__aenter__ = AsyncMock(return_value=mock_playwright)
-    mock_playwright.__aexit__ = AsyncMock(return_value=False)
-    mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
-        mock_ap.return_value = mock_playwright
-
+        mock_ap.return_value = mock_pw
         results = await provider.search("기생충", num=5)
 
-    assert len(results) == 2
-    assert results[0].title == "기생충 (영화)"
+    assert len(results) == 1
+    assert results[0].title == "기생충(영화)"
     assert results[0].source_domain == "namu.wiki"
+    assert results[0].source_type == SourceType.synopsis
     assert results[0].trust_score == 0.85
+    assert "봉준호" in results[0].text
 
 
 @pytest.mark.asyncio
-async def test_playwright_provider_search_empty_results(provider):
-    """검색 결과 없음."""
+async def test_search_falls_back_to_second_url(provider):
+    """첫 URL(영화) 에러 페이지 → 두 번째 URL 시도."""
+    call_count = [0]
+
+    async def title_side_effect():
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "페이지를 찾을 수 없습니다."
+        return "씬시어리티 - 나무위키"
+
     mock_page = AsyncMock()
-    mock_page.query_selector_all = AsyncMock(return_value=[])
-    mock_page.goto = AsyncMock()
-    mock_page.close = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=AsyncMock(status=200))
+    mock_page.title = AsyncMock(side_effect=title_side_effect)
+    mock_page.wait_for_selector = AsyncMock()
+    mock_page.evaluate = AsyncMock(side_effect=[
+        "씬시어리티",
+        "개요 텍스트",
+        "시놉시스 텍스트",
+    ])
+    mock_page.add_init_script = AsyncMock()
 
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
     mock_browser = AsyncMock()
-    mock_browser.new_page = AsyncMock(return_value=mock_page)
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
     mock_browser.close = AsyncMock()
-
-    mock_playwright = AsyncMock()
-    mock_playwright.__aenter__ = AsyncMock(return_value=mock_playwright)
-    mock_playwright.__aexit__ = AsyncMock(return_value=False)
-    mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
-        mock_ap.return_value = mock_playwright
+        mock_ap.return_value = mock_pw
+        results = await provider.search("씬시어리티", num=5)
 
-        results = await provider.search("존재하지않는영화", num=5)
+    assert len(results) == 1
+    assert results[0].title == "씬시어리티"
+
+
+@pytest.mark.asyncio
+async def test_search_all_urls_fail(provider):
+    """모든 URL 에러 페이지 → 빈 리스트."""
+    mock_page = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=AsyncMock(status=200))
+    mock_page.title = AsyncMock(return_value="페이지를 찾을 수 없습니다.")
+    mock_page.add_init_script = AsyncMock()
+
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    mock_browser = AsyncMock()
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_browser.close = AsyncMock()
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
+
+    with patch("search.playwright_provider.async_playwright") as mock_ap:
+        mock_ap.return_value = mock_pw
+        results = await provider.search("존재하지않는영화xyz", num=5)
 
     assert len(results) == 0
 
 
 @pytest.mark.asyncio
-async def test_playwright_provider_timeout_returns_empty(provider):
-    """페이지 로딩 타임아웃 → 빈 결과."""
+async def test_search_timeout_returns_empty(provider):
+    """goto 타임아웃 → 빈 리스트."""
     mock_page = AsyncMock()
-    mock_page.goto = AsyncMock(side_effect=TimeoutError("page timeout"))
-    mock_page.close = AsyncMock()
+    mock_page.goto = AsyncMock(side_effect=TimeoutError("timeout"))
+    mock_page.add_init_script = AsyncMock()
 
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
     mock_browser = AsyncMock()
-    mock_browser.new_page = AsyncMock(return_value=mock_page)
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
     mock_browser.close = AsyncMock()
-
-    mock_playwright = AsyncMock()
-    mock_playwright.__aenter__ = AsyncMock(return_value=mock_playwright)
-    mock_playwright.__aexit__ = AsyncMock(return_value=False)
-    mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
 
     with patch("search.playwright_provider.async_playwright") as mock_ap:
-        mock_ap.return_value = mock_playwright
-
+        mock_ap.return_value = mock_pw
         results = await provider.search("test", num=5)
 
     assert len(results) == 0

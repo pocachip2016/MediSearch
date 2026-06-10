@@ -1,9 +1,9 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] Playwright 실제 크롤링 검증 (Namu.Wiki 셀렉터 확인 + 다양한 영화 테스트)
 - [ ] score 필드 정확도 개선 (qwen2.5:7b few-shot 프롬프트 튜닝)
 - [ ] mediaX 연동 (MediSearch → mediaX WebSearch 폴백 체인 통합)
+- [ ] PlaywrightProvider 동음이의어 페이지 감지 개선 (올드보이 등 disambiguation → 서브페이지 자동 탐색)
 
 ## Next
 - [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
@@ -17,6 +17,7 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] Playwright 실제 크롤링 검증 (Namu.Wiki /search 차단 확인 → 직접 URL 방식으로 전환, integration 테스트 8/8)
 - [x] 데이터 파이프라인 & DB 스키마 설계 (SearchSource/MovieFacet, SQLite, 원본 미저장 원칙)
 - [x] Headless Browser 라이브러리 선택 → Playwright 채택
 - [x] 기본 검색 요청 프로토콜 설계 (SearchProvider ABC + POST /api/movies/evaluate)
