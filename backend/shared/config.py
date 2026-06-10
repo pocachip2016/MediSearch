@@ -8,8 +8,17 @@ class Settings(BaseSettings):
     # Database — POC 로컬 기본 SQLite
     DATABASE_URL: str = "sqlite:///./medisearch_dev.db"
 
-    # Search 계층 — fixture | playwright
+    # mediaX Postgres (읽기 전용) — TMDB/KMDb 캐시 소스
+    # Docker 컨테이너 → host.docker.internal, 호스트 직접 실행 → localhost
+    MEDIAX_DATABASE_URL: str = (
+        "postgresql+psycopg2://media_ax:media_ax@host.docker.internal:5432/media_ax"
+    )
+
+    # Search 계층 (단일) — fixture | playwright
     SEARCH_PROVIDER: str = "fixture"  # "playwright"로 변경 시 실제 웹 크롤링
+    # 앙상블 멀티소스 (콤마 구분) — 비우면 SEARCH_PROVIDER 단일 동작
+    # 예: "tmdb,kmdb,playwright"
+    SEARCH_PROVIDERS: str = ""
 
     # LLM — Ollama 로컬 (POC 기본)
     OLLAMA_URL: str = "http://localhost:11434"

@@ -1,8 +1,9 @@
 # MediSearch — TODO
 
 ## Now
+- [ ] MultiSourceRunner + main.py SEARCH_PROVIDERS 통합 (Step C)
+- [ ] docker-compose mediax_default 네트워크 연결 (mediaX DB 실접속)
 - [ ] score 필드 정확도 개선 (qwen2.5:7b few-shot 프롬프트 튜닝)
-- [ ] mediaX 연동 (MediSearch → mediaX WebSearch 폴백 체인 통합)
 - [ ] PlaywrightProvider 동음이의어 페이지 감지 개선 (올드보이 등 disambiguation → 서브페이지 자동 탐색)
 
 ## Next
@@ -17,6 +18,7 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] 멀티소스 앙상블 기반 구축 (TMDB/KMDb provider + trust 가중 facet 병합 엔진, Step A+B)
 - [x] Playwright 실제 크롤링 검증 (Namu.Wiki /search 차단 확인 → 직접 URL 방식으로 전환, integration 테스트 8/8)
 - [x] 데이터 파이프라인 & DB 스키마 설계 (SearchSource/MovieFacet, SQLite, 원본 미저장 원칙)
 - [x] Headless Browser 라이브러리 선택 → Playwright 채택

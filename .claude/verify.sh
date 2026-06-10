@@ -19,6 +19,12 @@ case "$1" in
   step8)
     $PYTEST tests/test_playwright_integration.py -v -m integration
     ;;
+  stepA)
+    $PYTEST tests/test_tmdb_provider.py tests/test_kmdb_provider.py -v
+    ;;
+  step9|stepB)
+    $PYTEST tests/test_facet_merge.py -v
+    ;;
   all)
     $PYTEST tests/ -v
     ;;
