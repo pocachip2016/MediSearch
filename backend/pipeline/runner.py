@@ -27,7 +27,7 @@ class PipelineRunner:
         self.evaluator = evaluator
         self.db = db
 
-    async def run(self, query: str | SearchQuery) -> dict:
+    async def run(self, query: str | SearchQuery, **_kwargs) -> dict:
         """query → facet dict 반환. 오류 시 빈 facet + 로깅."""
         sq = SearchQuery.from_text(query) if isinstance(query, str) else query
         query = sq.title  # 이후 로직은 title 문자열 사용

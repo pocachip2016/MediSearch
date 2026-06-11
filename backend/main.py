@@ -95,6 +95,7 @@ class MovieEvaluateResponse(BaseModel):
     content_id: int | None = None
     error: str | None = None
     skipped_reason: str | None = None  # "no_web": 웹 소스 없어 평가 생략
+    sources_detail: list[dict] | None = None  # provider별 {provider, docs_count, trust, confidence, evaluated}
 
 
 # ── 라우트 ────────────────────────────────────────────────
@@ -159,7 +160,11 @@ async def evaluate_movie(
             detail="Evaluation queue timeout — server busy",
         )
 
-    return MovieEvaluateResponse(**result, content_id=req.content_id)
+    return MovieEvaluateResponse(
+        **result,
+        content_id=req.content_id,
+        sources_detail=result.get("providers_detail")
+    )
 
 
 if __name__ == "__main__":

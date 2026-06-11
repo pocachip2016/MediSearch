@@ -13,8 +13,8 @@ services:
     environment:
       - ENV=development
       - DATABASE_URL=sqlite:///./medisearch_dev.db
-      # mediaX PostgreSQL (mediax_default 네트워크 내 postgres 서비스)
-      - MEDIAX_DATABASE_URL=postgresql+psycopg2://media_ax:media_ax@postgres:5432/media_ax
+      # mediaX PostgreSQL (host.docker.internal 기준, Docker 컨테이너→호스트 게이트웨이)
+      - MEDIAX_DATABASE_URL=postgresql+psycopg2://media_ax:media_ax@host.docker.internal:5432/media_ax
       # mediaX Ollama (공유 GPU Ollama)
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_TASK_MODEL=qwen2.5:7b
