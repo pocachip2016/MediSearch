@@ -19,7 +19,10 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_TASK_MODEL=qwen2.5:7b
       # 멀티소스 평가
-      - SEARCH_PROVIDERS=tmdb,kmdb,playwright
+      - SEARCH_PROVIDERS=tmdb,kmdb,playwright,wikipedia,kowiki,omdb
+      # OMDb API (1000req/일 무료)
+      - OMDB_API_KEY=d6612833-9979-4a6f-b872-c20d891e747d
+      - OMDB_DAILY_QUOTA=1000
       # 동시성/throttle
       - MAX_CONCURRENT_EVALS=1
       - EVAL_QUEUE_TIMEOUT_S=300

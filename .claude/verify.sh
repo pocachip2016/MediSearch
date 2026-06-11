@@ -31,6 +31,12 @@ case "$1" in
   step-c|stepC)
     $PYTEST tests/test_multi_runner.py tests/test_api.py -v
     ;;
+  no-namu-fix)
+    $PYTEST tests/test_multi_runner.py tests/test_api.py -v -k "not integration"
+    ;;
+  wiki-omdb)
+    $PYTEST tests/test_ko_wiki_provider.py tests/test_omdb_provider.py tests/test_multi_runner.py -v -k "not integration"
+    ;;
   score-tune)
     $PYTEST tests/test_score_calibration.py tests/test_evaluator.py -v
     ;;
