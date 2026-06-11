@@ -1,8 +1,6 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] docker-compose mediax_default 네트워크 연결 (mediaX DB 실접속)
-- [ ] PlaywrightProvider 동음이의어 페이지 감지 개선 (올드보이 등 disambiguation → 서브페이지 자동 탐색)
 
 ## Next
 - [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
@@ -16,6 +14,11 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] docker-compose mediaX DB 연결 (host.docker.internal + 60s retry, _init_failed 제거)
+- [x] PlaywrightProvider 동음이의어 자동 서브페이지 탐색 (_DISAMBIG_JS + URL 큐 방식)
+- [x] 한국어 위키백과(kowiki) + OMDb provider 추가 (커버리지 확대, DailyQuotaGuard)
+- [x] no_namu → no_web 로직 확장 (playwright/wikipedia/kowiki/omdb 웹 소스 통합)
+- [x] API 응답 sources_detail 추가 (provider별 docs_count/trust/confidence/evaluated)
 - [x] 멀티소스 앙상블 기반 구축 (TMDB/KMDb provider + trust 가중 facet 병합 엔진, Step A+B)
 - [x] Playwright 실제 크롤링 검증 (Namu.Wiki /search 차단 확인 → 직접 URL 방식으로 전환, integration 테스트 8/8)
 - [x] 데이터 파이프라인 & DB 스키마 설계 (SearchSource/MovieFacet, SQLite, 원본 미저장 원칙)
