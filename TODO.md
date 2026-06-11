@@ -6,6 +6,7 @@
 - [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
 - [ ] Scrapy 통합 검토
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
+- [ ] enrich + evaluate 결합 플래그 (provider 검색 1회 공유)
 
 ## Later
 - [ ] QuotaManager 구현
@@ -14,6 +15,7 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] 메타 보강 파이프라인 (POST /api/movies/enrich) — 하이브리드 추출(구조화 provider 직접, 텍스트 LLM), trust 가중 병합, story 30자 재작성, MovieMeta 저장
 - [x] docker-compose mediaX DB 연결 (host.docker.internal + 60s retry, _init_failed 제거)
 - [x] PlaywrightProvider 동음이의어 자동 서브페이지 탐색 (_DISAMBIG_JS + URL 큐 방식)
 - [x] 한국어 위키백과(kowiki) + OMDb provider 추가 (커버리지 확대, DailyQuotaGuard)

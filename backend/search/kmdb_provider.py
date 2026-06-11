@@ -92,13 +92,24 @@ class KmdbProvider(SearchProvider):
         for row in rows:
             title, synopsis, prod_year, nation, genre = row
             clean_title = clean_markup(title)
+            clean_synopsis = clean_markup(synopsis)
+            meta = {
+                "content_type": "movie",
+                "production_year": (
+                    int(prod_year) if prod_year and str(prod_year).isdigit() else None
+                ),
+                "countries": [nation] if nation else [],
+                "genres": [g.strip() for g in str(genre).split(",") if g.strip()] if genre else [],
+                "synopsis_raw": clean_synopsis,
+            }
             doc = SourceDocument(
                 url=f"https://www.kmdb.or.kr/search?query={query.title}",
                 title=f"{clean_title} ({prod_year or '?'})",
-                text=clean_markup(synopsis),
+                text=clean_synopsis,
                 source_domain="kmdb.or.kr",
                 source_type=SourceType.synopsis,
-                trust_score=0.85,  # 공식 메타
+                trust_score=0.85,
+                meta=meta,
             )
             (exact if clean_title == query.title else partial).append(doc)
 

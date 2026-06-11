@@ -5,11 +5,8 @@ SourceDocument 리스트 → validate_movie_facet 통과 facet dict.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
-
-import httpx
 
 from pipeline.facets import (
     ENUM_VOCAB,
@@ -19,6 +16,7 @@ from pipeline.facets import (
     empty_facet,
     validate_movie_facet,
 )
+from pipeline.ollama_client import generate_json
 from search.base import SourceDocument
 from shared.config import settings
 
@@ -127,26 +125,10 @@ class EvaluationEngine:
         return attach_coverage(facet, source_types)
 
     async def _call_ollama(self, prompt: str) -> Optional[dict]:
-        """Ollama /api/generate 호출 → dict 또는 None."""
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "format": "json",
-            "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 1024},
-        }
-        try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                resp = await client.post(
-                    f"{self.base_url}/api/generate", json=payload
-                )
-                resp.raise_for_status()
-                text = resp.json().get("response", "")
-                return json.loads(text)
-        except httpx.HTTPError as e:
-            logger.error(f"[evaluator] Ollama HTTP 오류: {e}")
-        except json.JSONDecodeError as e:
-            logger.error(f"[evaluator] LLM JSON 파싱 실패: {e}")
-        except Exception as e:
-            logger.error(f"[evaluator] 예외: {e}")
-        return None
+        """Ollama 호출 — ollama_client.generate_json 위임."""
+        return await generate_json(
+            prompt,
+            model=self.model,
+            base_url=self.base_url,
+            temperature=0.1,
+        )

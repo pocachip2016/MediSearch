@@ -90,3 +90,19 @@ async def test_search_by_docid_uses_docid_query(provider):
     assert len(docs) == 1
     call_text = str(session.execute.call_args[0][0])
     assert "docid = :docid" in call_text
+
+
+@pytest.mark.asyncio
+async def test_search_doc_meta_populated(provider):
+    """KmdbProvider search() 결과에 구조화 meta가 채워져야 함."""
+    rows = [("!HS 기생충 !HE", "전원백수 기택 가족...", 2019, "한국", "드라마,스릴러")]
+    with patch("search.kmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
+        docs = await provider.search(_sq("기생충"))
+
+    meta = docs[0].meta
+    assert meta is not None
+    assert meta["content_type"] == "movie"
+    assert meta["production_year"] == 2019
+    assert "한국" in meta["countries"]
+    assert "드라마" in meta["genres"]
+    assert "스릴러" in meta["genres"]

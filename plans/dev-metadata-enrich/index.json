@@ -1,0 +1,37 @@
+{
+  "project": "MediSearch",
+  "phase": "dev-metadata-enrich",
+  "goal": "영화/시리즈 기본 메타(감독·출연·장르·연도·러닝타임·국가·story·시리즈 정보)를 멀티소스 앙상블로 보강하는 POST /api/movies/enrich — mediaX 캐시 미스 보완용",
+  "steps": [
+    {
+      "step": 1, "name": "meta-step1-schema", "status": "completed",
+      "summary": "metadata_schema.py + SourceDocument.meta + SearchQuery.content_type + MovieMeta 모델",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 2, "name": "meta-step2-provider-meta", "status": "completed",
+      "summary": "omdb/kmdb/tmdb provider에 구조화 meta dict 추가 (추가 API 호출 0회, type= 힌트 지원)",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 3, "name": "meta-step3-merge", "status": "completed",
+      "summary": "metadata_merge.py — 필드별 전략(투표/MAD중앙값/34%임계/best-trust), _provenance 자동 생성",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 4, "name": "meta-step4-extractor", "status": "completed",
+      "summary": "ollama_client.py 공용화 + MetadataExtractionEngine (추정금지 프롬프트) + story rewrite_story",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 5, "name": "meta-step5-runner", "status": "completed",
+      "summary": "MetadataRunner — 하이브리드(구조화=직접/텍스트=LLM), story 폴백, require_web 지원",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 6, "name": "meta-step6-api", "status": "completed",
+      "summary": "POST /api/movies/enrich + MovieEnrichRequest/Response + 문서 현행화",
+      "completed_at": "2026-06-12"
+    }
+  ]
+}

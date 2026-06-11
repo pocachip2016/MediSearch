@@ -5,10 +5,12 @@ DailyQuotaGuard로 1000req/일 한도 초과 방지. 한도 초과 시 빈 결�
 파이프라인은 다른 provider 결과로 계속 진행.
 
 원본 폐기 원칙: Plot/Genre/Director/Actors 텍스트만 조합하여 반환.
+SourceDocument.meta에 구조화 필드 담음 (enrich 파이프라인용, DB 저장 안 함).
 """
 from __future__ import annotations
 
 import logging
+import re
 
 import httpx
 
@@ -24,6 +26,62 @@ _omdb_quota = DailyQuotaGuard(limit=settings.OMDB_DAILY_QUOTA, path="./omdb_quot
 
 _API_URL = "http://www.omdbapi.com/"
 _USER_AGENT = "MediSearch/0.1 (facet pipeline; contact: ops@mediax.local)"
+
+
+def _parse_runtime_minutes(val: str | None) -> int | None:
+    """"132 min" → 132, 없으면 None."""
+    if not val or val == "N/A":
+        return None
+    m = re.search(r"(\d+)", val)
+    return int(m.group(1)) if m else None
+
+
+def _parse_year_int(val: str | None) -> int | None:
+    """"2003" or "2003–2024" → 2003, 없으면 None."""
+    if not val or val == "N/A":
+        return None
+    m = re.match(r"(\d{4})", val)
+    return int(m.group(1)) if m else None
+
+
+def _split_csv(val: str | None) -> list[str]:
+    """"Action, Drama" → ["Action", "Drama"]. N/A → []."""
+    if not val or val == "N/A":
+        return []
+    return [v.strip() for v in val.split(",") if v.strip()]
+
+
+def _build_meta(data: dict, content_type_hint: str | None) -> dict:
+    """OMDb 응답 → enrich용 구조화 meta dict (파이프라인 임시, 저장 안 됨)."""
+    omdb_type = data.get("Type", "").lower()
+    if omdb_type == "series":
+        content_type = "series"
+    elif omdb_type == "movie":
+        content_type = "movie"
+    else:
+        content_type = content_type_hint
+
+    meta: dict = {
+        "content_type": content_type,
+        "original_title": data.get("Title") or None,
+        "production_year": _parse_year_int(data.get("Year")),
+        "runtime_minutes": _parse_runtime_minutes(data.get("Runtime")),
+        "genres": _split_csv(data.get("Genre")),
+        "directors": _split_csv(data.get("Director")),
+        "countries": _split_csv(data.get("Country")),
+        "cast": [{"name": n, "role": None} for n in _split_csv(data.get("Actors"))],
+        "synopsis_raw": data.get("Plot") or None,
+    }
+
+    # 시리즈 전용
+    total_seasons_raw = data.get("totalSeasons")
+    if content_type == "series" and total_seasons_raw:
+        try:
+            meta["series"] = {"total_seasons": int(total_seasons_raw)}
+        except (ValueError, TypeError):
+            pass
+
+    return meta
 
 
 def _build_text(data: dict) -> str:
@@ -102,10 +160,13 @@ class OmdbProvider(SearchProvider):
                 if query.imdb_id:
                     data = await self._fetch(client, {"i": query.imdb_id})
 
-                # 2) title + year 폴백
+                # 2) title + year 폴백 (content_type 힌트로 type= 파라미터 결정)
                 if data is None:
                     search_title = query.original_title or query.title
-                    params: dict = {"t": search_title, "type": "movie"}
+                    omdb_type = (
+                        "series" if query.content_type == "series" else "movie"
+                    )
+                    params: dict = {"t": search_title, "type": omdb_type}
                     if query.production_year:
                         params["y"] = str(query.production_year)
                     data = await self._fetch(client, params)
@@ -135,6 +196,7 @@ class OmdbProvider(SearchProvider):
                         source_domain="omdbapi.com",
                         source_type=SourceType.synopsis,
                         trust_score=0.82,
+                        meta=_build_meta(data, query.content_type),
                     )
                 )
                 logger.info(

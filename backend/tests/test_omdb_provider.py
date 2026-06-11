@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from search.base import SearchQuery, SourceType
-from search.omdb_provider import OmdbProvider, _build_text
+from search.omdb_provider import OmdbProvider, _build_text, _build_meta, _parse_runtime_minutes, _parse_year_int
 
 
 @pytest.fixture
@@ -129,3 +129,92 @@ async def test_search_no_api_key_returns_empty(provider):
         docs = await provider.search(_sq("Parasite"))
 
     assert docs == []
+
+
+@pytest.mark.asyncio
+async def test_search_doc_meta_populated(provider):
+    """search() 결과에 구조화 meta 필드가 채워져야 함."""
+    sq = _sq(imdb_id="tt6751668")
+    hit = _omdb_hit(Type="movie", Runtime="132 min", Country="South Korea")
+    client = _mock_client(hit)
+
+    with patch("search.omdb_provider.httpx.AsyncClient", return_value=client), \
+         patch("search.omdb_provider.settings.OMDB_API_KEY", "testkey"), \
+         patch("search.omdb_provider._omdb_quota.consume", return_value=True), \
+         patch("search.omdb_provider._omdb_throttle.wait", new_callable=AsyncMock):
+        docs = await provider.search(sq)
+
+    assert len(docs) == 1
+    meta = docs[0].meta
+    assert meta is not None
+    assert meta["content_type"] == "movie"
+    assert meta["production_year"] == 2019
+    assert meta["runtime_minutes"] == 132
+    assert "Bong Joon Ho" in meta["directors"]
+    assert "Song Kang-ho" == meta["cast"][0]["name"]
+    assert meta["cast"][0]["role"] is None
+
+
+@pytest.mark.asyncio
+async def test_search_series_type_param(provider):
+    """content_type=series 힌트 → OMDb 검색 type=series 사용."""
+    sq = _sq("Squid Game", content_type="series")
+    hit = _omdb_hit(Title="Squid Game", Type="series", totalSeasons="2")
+    client = _mock_client(hit)
+
+    with patch("search.omdb_provider.httpx.AsyncClient", return_value=client), \
+         patch("search.omdb_provider.settings.OMDB_API_KEY", "testkey"), \
+         patch("search.omdb_provider._omdb_quota.consume", return_value=True), \
+         patch("search.omdb_provider._omdb_throttle.wait", new_callable=AsyncMock):
+        docs = await provider.search(sq)
+
+    call_params = client.get.call_args[1]["params"]
+    assert call_params.get("type") == "series"
+    assert docs[0].meta["series"]["total_seasons"] == 2
+
+
+class TestBuildMeta:
+    def test_movie_type(self):
+        data = _omdb_hit(Type="movie")
+        m = _build_meta(data, None)
+        assert m["content_type"] == "movie"
+
+    def test_series_type(self):
+        data = _omdb_hit(Type="series", totalSeasons="3")
+        m = _build_meta(data, None)
+        assert m["content_type"] == "series"
+        assert m["series"]["total_seasons"] == 3
+
+    def test_year_parse(self):
+        data = _omdb_hit(Year="2003")
+        m = _build_meta(data, None)
+        assert m["production_year"] == 2003
+
+    def test_year_range(self):
+        data = _omdb_hit(Year="2021–2024")
+        m = _build_meta(data, None)
+        assert m["production_year"] == 2021
+
+    def test_runtime_parse(self):
+        data = _omdb_hit(Runtime="132 min")
+        m = _build_meta(data, None)
+        assert m["runtime_minutes"] == 132
+
+    def test_na_fields_empty(self):
+        data = {"Response": "True", "Title": "X", "Genre": "N/A", "Director": "N/A", "Actors": "N/A", "Country": "N/A", "Year": "2020", "Plot": "p"}
+        m = _build_meta(data, None)
+        assert m["genres"] == []
+        assert m["directors"] == []
+        assert m["cast"] == []
+        assert m["countries"] == []
+
+
+class TestParseHelpers:
+    def test_runtime_minutes(self):
+        assert _parse_runtime_minutes("132 min") == 132
+        assert _parse_runtime_minutes("N/A") is None
+
+    def test_year_int(self):
+        assert _parse_year_int("2003") == 2003
+        assert _parse_year_int("2021–2024") == 2021
+        assert _parse_year_int("N/A") is None
