@@ -73,6 +73,23 @@ _SYNOPSIS_JS = """() => {
     return texts.join(' ').slice(0, 800);
 }"""
 
+_DISAMBIG_JS = """() => {
+    const h2s = Array.from(document.querySelectorAll('h2'));
+    const hasOverview = h2s.some(h => h.textContent.includes('개요'));
+    const body = document.body.innerText.slice(0, 600);
+    const markers = ['다른 뜻에 대해서는', '동음이의어', '이 문서는 동음이의'];
+    return !hasOverview && markers.some(m => body.includes(m));
+}"""
+
+_MOVIE_LINK_JS = """() => {
+    const links = Array.from(document.querySelectorAll('a[href*="/w/"]'));
+    const found = links.find(a => {
+        const href = decodeURIComponent(a.href || '');
+        return href.includes('(%EC%98%81%ED%99%94)') || href.includes('(영화)');
+    });
+    return found ? found.href : null;
+}"""
+
 
 class PlaywrightProvider(SearchProvider):
     """Namu.Wiki 직접 문서 URL 크롤러."""
@@ -92,7 +109,10 @@ class PlaywrightProvider(SearchProvider):
         return [f"{base}/{urllib.parse.quote(t)}" for t in candidates]
 
     async def search(self, query: SearchQuery, num: int = 5) -> list[SourceDocument]:
-        """Namu.Wiki 직접 문서 URL 접근 → SourceDocument 반환."""
+        """Namu.Wiki 직접 문서 URL 접근 → SourceDocument 반환.
+
+        동음이의어 페이지 감지 시 (영화) 링크 자동 탐색.
+        """
         results = []
 
         try:
@@ -111,7 +131,16 @@ class PlaywrightProvider(SearchProvider):
                     "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
                 )
 
-                for url in self._build_urls(query.title):
+                url_queue = list(self._build_urls(query.title))
+                visited: set[str] = set()
+                followed_disambig = False
+
+                while url_queue:
+                    url = url_queue.pop(0)
+                    if url in visited:
+                        continue
+                    visited.add(url)
+
                     try:
                         await _namu_throttle.wait()
                         logger.info(f"[playwright] 접속: {url}")
@@ -132,6 +161,18 @@ class PlaywrightProvider(SearchProvider):
 
                         # h1 대기 (렌더링 완료 기준)
                         await page.wait_for_selector("h1", timeout=8000)
+
+                        # 동음이의어 페이지 감지 및 자동 탐색
+                        is_disambig = await page.evaluate(_DISAMBIG_JS)
+                        if is_disambig and not followed_disambig:
+                            movie_link = await page.evaluate(_MOVIE_LINK_JS)
+                            if movie_link:
+                                logger.info(f"[playwright] 동음이의어 페이지 감지 → {movie_link}")
+                                url_queue.insert(0, movie_link)
+                                followed_disambig = True
+                            else:
+                                logger.info(f"[playwright] 동음이의어 — (영화) 링크 없음, 스킵")
+                            continue
 
                         title_text = await page.evaluate(
                             "() => document.querySelector('h1')?.innerText || ''"

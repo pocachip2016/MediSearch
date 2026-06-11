@@ -35,6 +35,7 @@ async def test_search_success(provider):
     mock_page.title = AsyncMock(return_value="기생충(영화) - 나무위키")
     mock_page.wait_for_selector = AsyncMock()
     mock_page.evaluate = AsyncMock(side_effect=[
+        False,  # _DISAMBIG_JS → False (동음이의어 아님)
         "기생충(영화)",    # h1 innerText
         "봉준호 감독의 7번째 장편. 반지하 가족 이야기.",  # overview
         "전원백수 기택 가족이 부잣집에 잠입하면서...",    # synopsis
@@ -81,6 +82,7 @@ async def test_search_falls_back_to_second_url(provider):
     mock_page.title = AsyncMock(side_effect=title_side_effect)
     mock_page.wait_for_selector = AsyncMock()
     mock_page.evaluate = AsyncMock(side_effect=[
+        False,  # _DISAMBIG_JS → False
         "씬시어리티",
         "개요 텍스트",
         "시놉시스 텍스트",
@@ -150,5 +152,95 @@ async def test_search_timeout_returns_empty(provider):
     with patch("search.playwright_provider.async_playwright") as mock_ap:
         mock_ap.return_value = mock_pw
         results = await provider.search(_sq("test"), num=5)
+
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_search_disambig_page_finds_movie_link(provider):
+    """동음이의어 페이지 → (영화) 링크 발견 → 성공."""
+    call_count = [0]
+
+    async def title_side_effect():
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "올드보이 - 나무위키"  # 동음이의어 페이지
+        return "올드보이(영화) - 나무위키"  # 영화 페이지
+
+    async def evaluate_side_effect(js_str):
+        # _DISAMBIG_JS → True (첫 호출)
+        # _MOVIE_LINK_JS → movie_link (두 번째 호출)
+        # 정상 페이지 h1, overview, synopsis (세 번째~ 호출)
+        if "_DISAMBIG_JS" in str(js_str) or "hasOverview" in str(js_str):
+            return True
+        elif "_MOVIE_LINK_JS" in str(js_str) or "decodeURIComponent" in str(js_str):
+            return "https://namu.wiki/w/%EC%98%AC%EB%93%9C%EB%B3%B4%EC%9D%B4(%EC%98%81%ED%99%94)"
+        elif "h1" in str(js_str):
+            return "올드보이(영화)"
+        elif "개요" in str(js_str):
+            return "2003년 박찬욱 감독의 대작."
+        else:  # synopsis
+            return "미스터 오 일명 오대수라는 남자가..."
+
+    mock_page = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=AsyncMock(status=200))
+    mock_page.title = AsyncMock(side_effect=title_side_effect)
+    mock_page.wait_for_selector = AsyncMock()
+    mock_page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    mock_page.add_init_script = AsyncMock()
+
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    mock_browser = AsyncMock()
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_browser.close = AsyncMock()
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
+
+    with patch("search.playwright_provider.async_playwright") as mock_ap:
+        mock_ap.return_value = mock_pw
+        results = await provider.search(_sq("올드보이"), num=5)
+
+    assert len(results) == 1
+    assert results[0].title == "올드보이(영화)"
+    assert "박찬욱" in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_search_disambig_page_no_movie_link(provider):
+    """동음이의어 페이지 + (영화) 링크 없음 → 빈 리스트."""
+    async def title_side_effect():
+        return "존재하지않는항목 - 나무위키"
+
+    async def evaluate_side_effect(js_str):
+        if "_DISAMBIG_JS" in str(js_str) or "hasOverview" in str(js_str):
+            return True
+        elif "_MOVIE_LINK_JS" in str(js_str) or "decodeURIComponent" in str(js_str):
+            return None  # (영화) 링크 없음
+        else:
+            return ""
+
+    mock_page = AsyncMock()
+    mock_page.goto = AsyncMock(return_value=AsyncMock(status=200))
+    mock_page.title = AsyncMock(side_effect=title_side_effect)
+    mock_page.wait_for_selector = AsyncMock()
+    mock_page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    mock_page.add_init_script = AsyncMock()
+
+    mock_context = AsyncMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    mock_browser = AsyncMock()
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_browser.close = AsyncMock()
+    mock_pw = AsyncMock()
+    mock_pw.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_pw.__aexit__ = AsyncMock(return_value=False)
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
+
+    with patch("search.playwright_provider.async_playwright") as mock_ap:
+        mock_ap.return_value = mock_pw
+        results = await provider.search(_sq("존재하지않는항목"), num=5)
 
     assert len(results) == 0

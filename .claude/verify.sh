@@ -37,6 +37,9 @@ case "$1" in
   wiki-omdb)
     $PYTEST tests/test_ko_wiki_provider.py tests/test_omdb_provider.py tests/test_multi_runner.py -v -k "not integration"
     ;;
+  step-disambig)
+    $PYTEST tests/test_playwright_provider.py -v
+    ;;
   score-tune)
     $PYTEST tests/test_score_calibration.py tests/test_evaluator.py -v
     ;;
