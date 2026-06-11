@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_EVALS: int = 1  # Ollama 직렬화 (1 = 완전 직렬)
     EVAL_QUEUE_TIMEOUT_S: int = 300  # 대기열 타임아웃 (초과 시 429)
     NAMU_MIN_INTERVAL_S: float = 20.0  # Namu.wiki 최소 간격 (초/요청)
+    WIKI_MIN_INTERVAL_S: float = 1.0   # en.wikipedia.org API 최소 간격 (초/요청)
+    WIKI_TIMEOUT_S: float = 10.0       # Wikipedia API 요청 타임아웃
+    KO_WIKI_MIN_INTERVAL_S: float = 1.0
+    KO_WIKI_TIMEOUT_S: float = 10.0
+    OMDB_API_KEY: str = ""
+    OMDB_DAILY_QUOTA: int = 1000       # 무료 tier 하루 한도
+    OMDB_MIN_INTERVAL_S: float = 1.0
+    OMDB_TIMEOUT_S: float = 10.0
 
 
 settings = Settings()

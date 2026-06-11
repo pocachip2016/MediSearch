@@ -19,8 +19,10 @@ class SourceType(str, Enum):
 class SearchQuery:
     """구조화된 검색 요청. ID가 있으면 title ILIKE 대신 정확 조회에 사용."""
     title: str
+    original_title: str | None = None  # 영문 위키/OMDb 검색 키 (해외영화)
     production_year: int | None = None
     tmdb_id: int | None = None
+    imdb_id: str | None = None         # OMDb 정확 조회용 (tt1234567 형식)
     kmdb_docid: str | None = None
     kobis_movie_cd: str | None = None
 

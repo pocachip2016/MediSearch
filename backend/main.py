@@ -56,7 +56,11 @@ class MovieEvaluateRequest(BaseModel):
     tmdb_id: int | None = None
     kmdb_docid: str | None = None
     kobis_movie_cd: str | None = None
+    original_title: str | None = None  # 영문 위키/OMDb 검색 키 (해외영화)
+    imdb_id: str | None = None          # OMDb 정확 조회용 (tt1234567 형식)
     content_id: int | None = None  # mediaX 콘텐츠 ID — 응답에 echo
+    require_namu: bool = False  # (레거시 alias) 웹 소스 없으면 평가 생략
+    require_web: bool = False   # True: 나무위키/영문위키 둘 다 없으면 Ollama 평가 생략
 
     @model_validator(mode="after")
     def require_title_or_query(self) -> "MovieEvaluateRequest":
@@ -64,13 +68,20 @@ class MovieEvaluateRequest(BaseModel):
             raise ValueError("query 또는 title 중 하나는 필수입니다.")
         return self
 
+    @property
+    def need_web(self) -> bool:
+        """require_web 또는 레거시 require_namu 중 하나라도 True면 웹 게이트 적용."""
+        return self.require_web or self.require_namu
+
     def to_search_query(self) -> "SearchQuery":
         from search.base import SearchQuery
         t = self.title or self.query
         return SearchQuery(
             title=t,
+            original_title=self.original_title,
             production_year=self.production_year,
             tmdb_id=self.tmdb_id,
+            imdb_id=self.imdb_id,
             kmdb_docid=self.kmdb_docid,
             kobis_movie_cd=self.kobis_movie_cd,
         )
@@ -83,6 +94,8 @@ class MovieEvaluateResponse(BaseModel):
     facet_id: int | None = None
     content_id: int | None = None
     error: str | None = None
+    skipped_reason: str | None = None  # "no_web": 웹 소스 없어 평가 생략
+    sources_detail: list[dict] | None = None  # provider별 {provider, docs_count, trust, confidence, evaluated}
 
 
 # ── 라우트 ────────────────────────────────────────────────
@@ -139,7 +152,7 @@ async def evaluate_movie(
 
     try:
         async with eval_gate:
-            result = await runner.run(sq)
+            result = await runner.run(sq, require_namu=req.need_web)
     except EvalBusyError:
         from fastapi import HTTPException
         raise HTTPException(
@@ -147,7 +160,11 @@ async def evaluate_movie(
             detail="Evaluation queue timeout — server busy",
         )
 
-    return MovieEvaluateResponse(**result, content_id=req.content_id)
+    return MovieEvaluateResponse(
+        **result,
+        content_id=req.content_id,
+        sources_detail=result.get("providers_detail")
+    )
 
 
 if __name__ == "__main__":

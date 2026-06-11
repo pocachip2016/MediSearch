@@ -9,6 +9,7 @@ Docker 컨테이너에서는 host.docker.internal, 호스트 직접 실행 시 l
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
 from sqlalchemy import create_engine
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 _engine: Optional[Engine] = None
 _SessionFactory: Optional[sessionmaker] = None
-_init_failed = False
+_next_retry_at: float = 0.0  # time.monotonic() 기준, 0 = 아직 시도 안 함
 
 
 def _candidate_urls() -> list[str]:
@@ -36,12 +37,12 @@ def _candidate_urls() -> list[str]:
 
 
 def _init_engine() -> Optional[sessionmaker]:
-    """엔진/세션 팩토리 lazy 초기화. 실패 시 None (한 번만 시도)."""
-    global _engine, _SessionFactory, _init_failed
+    """엔진/세션 팩토리 lazy 초기화. 실패 시 60초 후 재시도."""
+    global _engine, _SessionFactory, _next_retry_at
 
     if _SessionFactory is not None:
         return _SessionFactory
-    if _init_failed:
+    if time.monotonic() < _next_retry_at:
         return None
 
     for url in _candidate_urls():
@@ -60,12 +61,13 @@ def _init_engine() -> Optional[sessionmaker]:
                 autocommit=False, autoflush=False, bind=engine
             )
             logger.info(f"[mediax_db] 연결 성공: {url.split('@')[-1]}")
+            _next_retry_at = 0.0  # 성공 시 플래그 리셋
             return _SessionFactory
         except Exception as e:
             logger.warning(f"[mediax_db] 연결 실패 ({url.split('@')[-1]}): {e}")
 
-    _init_failed = True
-    logger.error("[mediax_db] 모든 후보 URL 연결 실패 — mediaX 소스 비활성")
+    _next_retry_at = time.monotonic() + 60.0
+    logger.error("[mediax_db] 모든 후보 URL 연결 실패 — 60초 후 재시도")
     return None
 
 

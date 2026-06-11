@@ -8,6 +8,9 @@ from search.fixture_provider import FixtureProvider
 from search.kmdb_provider import KmdbProvider
 from search.playwright_provider import PlaywrightProvider
 from search.tmdb_provider import TmdbProvider
+from search.ko_wiki_provider import KoreanWikiProvider
+from search.omdb_provider import OmdbProvider
+from search.wikipedia_provider import WikipediaProvider
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,9 @@ _PROVIDER_MAP: dict[str, callable] = {
     "playwright": lambda: PlaywrightProvider(headless=True, timeout_ms=15000),
     "tmdb":       lambda: TmdbProvider(),
     "kmdb":       lambda: KmdbProvider(),
+    "wikipedia":  lambda: WikipediaProvider(),
+    "kowiki":     lambda: KoreanWikiProvider(),
+    "omdb":       lambda: OmdbProvider(),
 }
 
 
