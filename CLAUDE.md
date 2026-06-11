@@ -1,77 +1,109 @@
 @../CLAUDE.md
 
-# MediSearch — Headless Browser WebSearch Agent
+# MediSearch — 영화 Facet 파이프라인 에이전트
 
 ## 프로젝트 구조
 ```
 MediSearch/
-├── backend/          # FastAPI + Headless Browser + Scrapy (Python)
+├── backend/          # FastAPI + 멀티소스 앙상블 파이프라인 (Python)
+│   ├── search/       # SearchProvider ABC + 6개 provider
+│   ├── pipeline/     # MultiSourceRunner + EvaluationEngine + facet merge
+│   ├── shared/       # config, mediax_db, quota, limiter
+│   ├── models.py     # SearchSource + MovieFacet (SQLAlchemy)
+│   └── main.py       # FastAPI 진입점
 ├── docs/             # 설계 문서
 └── docker-compose.yml
 ```
 
 ## 목표
-Headless 브라우저를 활용한 WebSearch 에이전트 구현. mediaX의 WebSearch 4-provider 폴백 체인을 확장하여 Brave/SerpAPI 대신 Headless 브라우저 기반 스크래핑으로 검색 결과 수집.
+멀티소스 앙상블 기반 영화 facet 추출 파이프라인.
+여러 provider에서 수집한 문서를 Ollama LLM으로 평가 후 신뢰도 가중 병합.
 
 ## 핵심 원칙
-**파이프라인**: 검색 → 로컬 평가 → 요약/새 데이터 생성 → 원본 폐기
+**파이프라인**: 검색 → 평가 → 병합 → 원본 폐기
 
-- 검색 수행: Headless Browser / Scrapy로 정보 수집
-- 로컬 평가: LLM/로직으로 수집 정보 평가
-- 결과 생성: 요약, 추출, 새 데이터 구조화
-- **원본 미저장**: 검색된 원본 소스(HTML, 원문)는 로컬 저장 안 함
-- **저장 대상**: 메타데이터(URL, 제목, 날짜, 신뢰도) + 평가 결과(요약, 추출값, 점수)
+- **원본 미저장**: 검색된 원본(HTML, 원문) 저장 안 함
+- **저장 대상**: 메타데이터(URL, 제목, 신뢰도) + 평가 결과(facet JSON)
+- **앙상블**: 복수 provider 결과를 trust_score 가중 병합
 
-## 빠른 시작
+## 빠른 시작 (Docker)
 ```bash
-cd backend
-cp .env.example .env  # API 키 입력
-pip install -r requirements.txt
-uvicorn main:app --reload
+docker compose up          # port 8080
+# 또는 로컬 개발
+cd backend && uvicorn main:app --reload  # port 8000
 ```
 
-## POC 진행 현황 (영화 facet 파이프라인)
-plan: `~/.claude/plans/robust-sauteeing-pike.md`
+## Provider 구성 (SEARCH_PROVIDERS)
+| provider | 소스 | 신뢰도 | 비고 |
+|----------|------|-------|------|
+| `tmdb` | mediaX TMDB 캐시 DB | ~0.95 | vote_count 반영 |
+| `kmdb` | mediaX KMDb 캐시 DB | 0.85 | 한국영화 공식 메타 |
+| `playwright` | 나무위키 Headless | 0.85 | 동음이의어 자동 탐색 |
+| `wikipedia` | 영문 위키 API | 0.75 | original_title 사용 |
+| `kowiki` | 한국어 위키 API | 0.80 | disambiguation 필터 |
+| `omdb` | OMDb API (IMDb) | 0.82 | 1000req/일, imdb_id 우선 |
 
-| Step | 내용 | 상태 |
-|------|------|------|
-| 1 | DB 모델 부트스트랩 (SearchSource/MovieFacet, SQLite) | ✅ |
-| 2 | 검색 계층 fixture (SourceDocument, SearchProvider ABC) | ✅ |
-| 3 | Facet 스키마 (타입 구동, MVP 1순위 전체) | ✅ |
-| 4 | 평가 엔진 (Ollama → facet JSON) | ⏳ 다음 |
-| 5 | 러너 + FastAPI + CLI end-to-end | 🔜 |
+docker-compose 기본값: `SEARCH_PROVIDERS=tmdb,kmdb,playwright,wikipedia,kowiki,omdb`
+
+## API
+
+### POST /api/movies/evaluate
+```json
+{
+  "title": "올드보이",
+  "production_year": 2003,
+  "tmdb_id": 670,
+  "imdb_id": "tt0364569",
+  "original_title": "Oldboy",
+  "require_web": false
+}
+```
+
+응답에 `sources_detail` 포함:
+```json
+{
+  "facet": {...},
+  "sources_detail": [
+    {"provider": "kowiki", "docs_count": 1, "trust": 0.80, "confidence": 0.7, "evaluated": true}
+  ]
+}
+```
 
 ## 아키텍처 요약
 ```
-backend/
-├── shared/         # config(SQLite/Ollama), database(get_db)
-├── models.py       # SearchSource(메타만) + MovieFacet
-├── search/         # SearchProvider ABC + FixtureProvider
-│   └── data/fixtures/sample_movies.json  (기생충, 씬시어리티)
-└── pipeline/
-    └── facets.py   # validate_movie_facet / facet_overlap_score
-                    # safety_flags / coverage+confidence
+POST /api/movies/evaluate
+    ↓
+MultiSourceRunner.run()
+    Phase 1: 모든 provider 병렬 검색
+    Phase 2: provider별 Ollama 평가 (EvaluationEngine)
+    merge_facets() → trust 가중 병합
+    ↓
+SaveSources + SaveFacet (메타만 저장)
+    ↓
+MovieEvaluateResponse (facet + sources_detail)
 ```
 
-## Facet 스키마 (1순위 MVP)
+## Facet 스키마
 - **enum 5**: primary_genre / conflict / ending_type / pacing_reaction / ending_reaction
 - **vocab list 4**: sub_genre / theme / mood / emotional_aftertaste
 - **score 11**: tension / immersion / boredom_risk / rewatch_value / attention / emotional_energy / violence / gore / sexual / spoiler / sentiment
 - **파생**: safety_flags (is_violent/is_gory/is_sexual + age_suggestion)
-- **신뢰도**: _coverage + confidence (원본 폐기 원칙 보완)
+- **신뢰도**: _coverage + confidence
 - 상세: `docs/facet-schema.md`
 
-## Step 4 시작 체크리스트
-```bash
-ollama list | grep llama3.2  # 모델 확인 (없으면 ollama pull llama3.2:3b)
-cd ~/Work/MediSearch/backend
-python3 -c "from pipeline.facets import validate_movie_facet; print('OK')"
-```
-
 ## 주요 포트
-FastAPI 8000 · Redis 6379 (선택) · Ollama 11434
+FastAPI 8080 (Docker) · FastAPI 8000 (로컬) · Ollama 11434
+
+## 환경변수 핵심
+| 변수 | 기본값 | 비고 |
+|------|--------|------|
+| `SEARCH_PROVIDERS` | `""` | 콤마 구분, 비우면 SEARCH_PROVIDER 단일 |
+| `OMDB_API_KEY` | `""` | OMDb 무료 키 필수 |
+| `OMDB_DAILY_QUOTA` | `1000` | 하루 요청 한도 |
+| `MEDIAX_DATABASE_URL` | `@host.docker.internal:5432` | mediaX Postgres |
+| `OLLAMA_TASK_MODEL` | `qwen2.5:3b` | facet 추출 전용 |
 
 ## Where to look
 - 상세 TODO: `@TODO.md`
 - Facet 스키마 설계: `docs/facet-schema.md`
-- POC plan: `~/.claude/plans/robust-sauteeing-pike.md`
+- verify 스크립트: `.claude/verify.sh`
