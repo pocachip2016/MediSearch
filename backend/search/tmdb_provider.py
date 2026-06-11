@@ -90,6 +90,11 @@ class TmdbProvider(SearchProvider):
         for row in rows:
             title, overview, vote_count, popularity, release_date = row
             year = release_date.year if release_date else "?"
+            meta = {
+                "content_type": "movie",
+                "production_year": release_date.year if release_date else None,
+                "synopsis_raw": overview or None,
+            }
             docs.append(
                 SourceDocument(
                     url=f"https://www.themoviedb.org/search?query={query.title}",
@@ -98,6 +103,7 @@ class TmdbProvider(SearchProvider):
                     source_domain="themoviedb.org",
                     source_type=SourceType.synopsis,
                     trust_score=_trust_score(vote_count),
+                    meta=meta,
                 )
             )
 

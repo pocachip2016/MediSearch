@@ -69,6 +69,44 @@ docker-compose 기본값: `SEARCH_PROVIDERS=tmdb,kmdb,playwright,wikipedia,kowik
 }
 ```
 
+### POST /api/movies/enrich
+영화/시리즈 기본 메타 보강 (mediaX 캐시 미스 보완용).
+구조화 provider(omdb/tmdb/kmdb)는 LLM 없이 직접 추출, 텍스트 provider(namu/wiki/kowiki)는 Ollama 추출.
+
+```json
+{
+  "title": "오징어 게임",
+  "imdb_id": "tt10919420",
+  "content_type": "series",
+  "require_web": false
+}
+```
+
+응답:
+```json
+{
+  "movie_query": "오징어 게임",
+  "metadata": {
+    "content_type": "series",
+    "production_year": 2021,
+    "genres": ["스릴러", "드라마"],
+    "directors": ["황동혁"],
+    "cast": [{"name": "이정재", "role": "성기훈"}],
+    "story": "456억 상금을 건 목숨을 건 게임에 참여한 사람들",
+    "countries": ["한국"],
+    "series": {"total_seasons": 2, "air_status": "ended", "networks": ["Netflix"]},
+    "_provenance": {"genres": ["omdb", "kowiki"]},
+    "confidence": 0.63
+  },
+  "source_count": 4,
+  "meta_id": 7,
+  "content_id": null,
+  "sources_detail": [
+    {"provider": "omdb", "docs_count": 1, "trust": 0.82, "evaluated": false, "structured": true}
+  ]
+}
+```
+
 ## 아키텍처 요약
 ```
 POST /api/movies/evaluate
@@ -101,7 +139,7 @@ FastAPI 8080 (Docker) · FastAPI 8000 (로컬) · Ollama 11434
 | `OMDB_API_KEY` | `""` | OMDb 무료 키 필수 |
 | `OMDB_DAILY_QUOTA` | `1000` | 하루 요청 한도 |
 | `MEDIAX_DATABASE_URL` | `@host.docker.internal:5432` | mediaX Postgres |
-| `OLLAMA_TASK_MODEL` | `qwen2.5:3b` | facet 추출 전용 |
+| `OLLAMA_TASK_MODEL` | `qwen2.5:7b` | facet/메타 추출 전용 |
 
 ## Where to look
 - 상세 TODO: `@TODO.md`

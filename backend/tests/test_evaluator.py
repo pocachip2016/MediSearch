@@ -107,7 +107,7 @@ class TestEvaluationEngine:
         mock_resp.json.return_value = {"response": json.dumps(valid_llm_response)}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -129,7 +129,7 @@ class TestEvaluationEngine:
         mock_resp.json.return_value = {"response": json.dumps(valid_llm_response)}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -157,7 +157,7 @@ class TestEvaluationEngine:
     async def test_evaluate_ollama_error_returns_empty_facet(self, sample_docs):
         engine = EvaluationEngine()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(side_effect=Exception("connection refused"))
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -175,7 +175,7 @@ class TestEvaluationEngine:
         mock_resp.json.return_value = {"response": "이건 JSON이 아닙니다"}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -194,7 +194,7 @@ class TestEvaluationEngine:
         mock_resp.json.return_value = {"response": json.dumps(bad_response)}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -213,7 +213,7 @@ class TestEvaluationEngine:
         mock_resp.json.return_value = {"response": json.dumps(violent_response)}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("pipeline.evaluator.httpx.AsyncClient") as mock_client_cls:
+        with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)

@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 import logging
 
 from pipeline.evaluator import EvaluationEngine
+from pipeline.metadata_extractor import MetadataExtractionEngine
+from pipeline.metadata_runner import MetadataRunner
 from pipeline.multi_runner import MultiSourceRunner
 from pipeline.runner import PipelineRunner
 from search.fixture_provider import FixtureProvider
@@ -98,6 +100,52 @@ class MovieEvaluateResponse(BaseModel):
     sources_detail: list[dict] | None = None  # provider별 {provider, docs_count, trust, confidence, evaluated}
 
 
+class MovieEnrichRequest(BaseModel):
+    """메타 보강 요청 — evaluate와 동일 필드 + content_type 힌트."""
+    query: str | None = None
+    title: str | None = None
+    production_year: int | None = None
+    tmdb_id: int | None = None
+    kmdb_docid: str | None = None
+    kobis_movie_cd: str | None = None
+    original_title: str | None = None
+    imdb_id: str | None = None
+    content_id: int | None = None
+    content_type: str | None = None  # "movie"|"series" 힌트
+    require_web: bool = False
+
+    @model_validator(mode="after")
+    def require_title_or_query(self) -> "MovieEnrichRequest":
+        if not self.query and not self.title:
+            raise ValueError("query 또는 title 중 하나는 필수입니다.")
+        return self
+
+    def to_search_query(self) -> "SearchQuery":
+        from search.base import SearchQuery
+        t = self.title or self.query
+        return SearchQuery(
+            title=t,
+            original_title=self.original_title,
+            production_year=self.production_year,
+            tmdb_id=self.tmdb_id,
+            imdb_id=self.imdb_id,
+            kmdb_docid=self.kmdb_docid,
+            kobis_movie_cd=self.kobis_movie_cd,
+            content_type=self.content_type,
+        )
+
+
+class MovieEnrichResponse(BaseModel):
+    movie_query: str
+    metadata: dict
+    source_count: int
+    meta_id: int | None = None
+    content_id: int | None = None
+    error: str | None = None
+    skipped_reason: str | None = None
+    sources_detail: list[dict] | None = None
+
+
 # ── 라우트 ────────────────────────────────────────────────
 
 @app.get("/health")
@@ -164,6 +212,50 @@ async def evaluate_movie(
         **result,
         content_id=req.content_id,
         sources_detail=result.get("providers_detail")
+    )
+
+
+@app.post("/api/movies/enrich", response_model=MovieEnrichResponse)
+async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
+    """멀티소스 앙상블로 영화/시리즈 기본 메타 보강.
+
+    mediaX 캐시 미스 시 메타 보완용. 구조화 provider(omdb/tmdb/kmdb)는 LLM 없이
+    직접 추출, 텍스트 provider(namu/wiki/kowiki)는 Ollama 추출.
+    """
+    provider_names_str = settings.SEARCH_PROVIDERS or settings.SEARCH_PROVIDER
+    provider_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    providers = build_providers(provider_names)
+
+    extractor = MetadataExtractionEngine()
+    runner = MetadataRunner(providers, extractor, db)
+
+    sq = req.to_search_query()
+
+    try:
+        async with eval_gate:
+            result = await runner.run(sq, require_web=req.require_web)
+    except EvalBusyError:
+        raise HTTPException(
+            status_code=429,
+            detail="Evaluation queue timeout — server busy",
+        )
+    except Exception as e:
+        return MovieEnrichResponse(
+            movie_query=sq.title,
+            metadata={},
+            source_count=0,
+            content_id=req.content_id,
+            error=str(e),
+        )
+
+    return MovieEnrichResponse(
+        movie_query=result["movie_query"],
+        metadata=result["metadata"],
+        source_count=result["source_count"],
+        meta_id=result.get("meta_id"),
+        content_id=req.content_id,
+        skipped_reason=result.get("skipped_reason"),
+        sources_detail=result.get("providers_detail"),
     )
 
 

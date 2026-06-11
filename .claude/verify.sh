@@ -46,6 +46,24 @@ case "$1" in
   step9|stepB)
     $PYTEST tests/test_facet_merge.py -v
     ;;
+  meta-step1)
+    $PYTEST tests/test_metadata_schema.py tests/ -v -k "not integration"
+    ;;
+  meta-step2)
+    $PYTEST tests/test_omdb_provider.py tests/test_kmdb_provider.py tests/test_tmdb_provider.py -v -k "not integration"
+    ;;
+  meta-step3)
+    $PYTEST tests/test_metadata_merge.py -v
+    ;;
+  meta-step4)
+    $PYTEST tests/test_metadata_extractor.py tests/test_evaluator.py -v -k "not integration"
+    ;;
+  meta-step5)
+    $PYTEST tests/test_metadata_runner.py tests/ -v -k "not integration"
+    ;;
+  meta-step6)
+    $PYTEST tests/test_api.py tests/ -v -k "not integration"
+    ;;
   all)
     $PYTEST tests/ -v
     ;;

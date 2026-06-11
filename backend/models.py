@@ -51,3 +51,18 @@ class MovieFacet(Base):
     llm_engine = Column(String(50), nullable=True)  # 사용된 엔진명
     source_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MovieMeta(Base):
+    """멀티소스 앙상블로 보강한 영화/시리즈 기본 메타 (생성 데이터만 저장).
+
+    원문 시놉시스 저장 안 함 — story(≤60자 재작성)만.
+    """
+    __tablename__ = "movie_meta"
+
+    id = Column(Integer, primary_key=True)
+    movie_query = Column(String(300), index=True, nullable=False)
+    meta_json = Column(JSON, nullable=False)   # validate_metadata 통과 결과
+    llm_engine = Column(String(50), nullable=True)
+    source_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
