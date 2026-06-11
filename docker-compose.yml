@@ -23,7 +23,7 @@ services:
       # 동시성/throttle
       - MAX_CONCURRENT_EVALS=1
       - EVAL_QUEUE_TIMEOUT_S=300
-      - NAMU_MIN_INTERVAL_S=20
+      - NAMU_MIN_INTERVAL_S=30
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
