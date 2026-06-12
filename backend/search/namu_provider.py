@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Namu.Wiki 최소 간격 throttle
 _namu_throttle = DomainThrottle(min_interval_s=settings.NAMU_MIN_INTERVAL_S)
+# DDG HTML 검색 폴백 throttle (폴백 시에만 발동)
+_ddg_throttle = DomainThrottle(min_interval_s=5.0)
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -58,6 +60,22 @@ def _verify_match(h1_text: str, query_title: str) -> bool:
     """문서 h1 ↔ 검색 제목 양방향 포함 검사 (오염 차단 게이트)."""
     a, b = _normalize_title(h1_text), _normalize_title(query_title)
     return bool(a) and bool(b) and (a in b or b in a)
+
+
+def _extract_namu_url(href: str) -> str | None:
+    """DDG redirect href → namu.wiki 직접 URL 추출.
+
+    DDG 형식: //duckduckgo.com/l/?uddg=<URL-encoded namu URL>&rut=...
+    """
+    if href.startswith("//duckduckgo.com/l/"):
+        parsed = urllib.parse.urlparse("https:" + href)
+        qs = urllib.parse.parse_qs(parsed.query)
+        uddg = qs.get("uddg", [""])[0]
+        if "namu.wiki" in uddg:
+            return uddg
+    elif "namu.wiki" in href:
+        return href
+    return None
 
 
 def _section_text(soup: BeautifulSoup, keywords: tuple[str, ...], limit: int) -> str:
@@ -169,11 +187,72 @@ class NamuHttpProvider(SearchProvider):
             trust_score=0.85,
         )
 
+    async def _resolve_via_search(self, query: SearchQuery) -> list[str]:
+        """DDG HTML 검색으로 namu 문서 URL 발견 — 직접 URL 실패/동음이의 시 폴백.
+
+        Returns URL 리스트(빈 경우 graceful skip). N1 검증 게이트는 search()에서 재적용.
+        """
+        marker = "드라마" if query.content_type == "series" else "영화"
+        q_parts = ["site:namu.wiki", query.title, marker]
+        if query.production_year:
+            q_parts.append(str(query.production_year))
+        ddg_query = " ".join(q_parts)
+        ddg_url = (
+            f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(ddg_query)}"
+        )
+
+        try:
+            await _ddg_throttle.wait()
+            logger.info(f"[namu/ddg] 폴백 검색: {ddg_query!r}")
+            async with httpx.AsyncClient(
+                headers=_HEADERS, follow_redirects=True, timeout=10.0
+            ) as client:
+                resp = await client.get(ddg_url)
+                if resp.status_code >= 400:
+                    logger.warning(f"[namu/ddg] HTTP {resp.status_code}")
+                    return []
+                soup = BeautifulSoup(resp.text, "lxml")
+        except Exception as e:
+            logger.warning(f"[namu/ddg] 검색 실패: {e}")
+            return []
+
+        norm_query = _normalize_title(query.title)
+        candidates: list[tuple[int, str]] = []
+        for a in soup.find_all("a", class_="result__a"):
+            href = a.get("href", "")
+            namu_url = _extract_namu_url(href)
+            if not namu_url or "?noredirect" in namu_url:
+                continue
+            path = urllib.parse.urlparse(namu_url).path
+            if not path.startswith("/w/"):
+                continue
+            doc_name = urllib.parse.unquote(path[3:])
+            norm_doc = _normalize_title(doc_name)
+            # 필수: 문서명 ↔ 검색 제목 양방향 포함 (전우치류 배제)
+            if not norm_doc or not (norm_query in norm_doc or norm_doc in norm_query):
+                continue
+            score = 0
+            if query.production_year and str(query.production_year) in doc_name:
+                score += 2
+            if f"({marker})" in doc_name:
+                score += 1
+            candidates.append((score, namu_url))
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        top = [url for _, url in candidates[:2]]
+        logger.info(f"[namu/ddg] {len(top)}개 후보 발견")
+        return top
+
     async def search(self, query: SearchQuery, num: int = 5) -> list[SourceDocument]:
-        """Namu.Wiki 직접 문서 URL 접근 → 검증 통과 문서 1건 반환."""
+        """Namu.Wiki 직접 문서 URL 접근 → 검증 통과 문서 1건 반환.
+
+        직접 URL 소진 또는 parse 실패 시 DDG 검색 폴백으로 URL 보강(1회).
+        폴백 URL도 N1 검증 게이트 통과 후에만 채택.
+        """
         results: list[SourceDocument] = []
         url_queue = self._build_urls(query)
         visited: set[str] = set()
+        _ddg_resolved = False
 
         try:
             async with httpx.AsyncClient(
@@ -191,10 +270,18 @@ class NamuHttpProvider(SearchProvider):
                         status, final_url, html = await self._fetch(client, url)
                         if status >= 400:
                             logger.warning(f"[namu] HTTP {status}: {url}")
+                            if not url_queue and not _ddg_resolved:
+                                _ddg_resolved = True
+                                fallback = await self._resolve_via_search(query)
+                                url_queue.extend(u for u in fallback if u not in visited)
                             continue
 
                         doc = self._parse_doc(html, final_url, query)
                         if doc is None:
+                            if not url_queue and not _ddg_resolved:
+                                _ddg_resolved = True
+                                fallback = await self._resolve_via_search(query)
+                                url_queue.extend(u for u in fallback if u not in visited)
                             continue
 
                         results.append(doc)
@@ -203,6 +290,10 @@ class NamuHttpProvider(SearchProvider):
 
                     except httpx.HTTPError as e:
                         logger.warning(f"[namu] URL 실패 {url}: {e}")
+                        if not url_queue and not _ddg_resolved:
+                            _ddg_resolved = True
+                            fallback = await self._resolve_via_search(query)
+                            url_queue.extend(u for u in fallback if u not in visited)
                         continue
 
         except Exception as e:

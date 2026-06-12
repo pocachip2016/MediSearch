@@ -1,7 +1,7 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] **N2** DDG 검색 폴백 `_resolve_via_search` — 동음이의 자동 해소 (`plans/dev-namu-precision/step2.md`)
+- [x] **N2** DDG 검색 폴백 `_resolve_via_search` — 동음이의 자동 해소 (`plans/dev-namu-precision/step2.md`)
 - [ ] **N3** 과거 오염 스캔 스크립트 `scan_namu_contamination.py` + dry-run 검토 (`plans/dev-namu-precision/step3.md`)
 
 > **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.

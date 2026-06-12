@@ -1,10 +1,12 @@
 """tests/test_namu_provider.py — NamuHttpProvider 테스트 (mock httpx fetch)."""
+import urllib.parse
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from search.namu_provider import (
     NamuHttpProvider,
+    _extract_namu_url,
     _normalize_title,
     _verify_match,
 )
@@ -22,9 +24,11 @@ def provider():
 
 @pytest.fixture(autouse=True)
 def no_throttle():
-    """테스트에서 20s namu throttle 비활성화."""
-    with patch("search.namu_provider._namu_throttle") as mock_throttle:
-        mock_throttle.wait = AsyncMock()
+    """테스트에서 namu/DDG throttle 비활성화."""
+    with patch("search.namu_provider._namu_throttle") as mn, \
+         patch("search.namu_provider._ddg_throttle") as md:
+        mn.wait = AsyncMock()
+        md.wait = AsyncMock()
         yield
 
 
@@ -145,3 +149,91 @@ async def test_search_404_tries_next_url(provider):
     docs = await provider.search(_sq("기생충"))
     assert len(docs) == 1
     assert provider._fetch.call_count == 2
+
+
+# ── N2: DDG 검색 폴백 ─────────────────────────────────────────────────────────
+
+def _ddg_html(*namu_urls: str) -> str:
+    """DDG 결과 anchor 포함 합성 HTML."""
+    anchors = "\n".join(
+        f'<a class="result__a" href="//duckduckgo.com/l/?uddg={urllib.parse.quote(u)}">'
+        f'{u}</a>'
+        for u in namu_urls
+    )
+    return f"<html><body>{anchors}</body></html>"
+
+
+def test_extract_namu_url_decodes_uddg():
+    """DDG redirect href → namu URL 정상 디코딩."""
+    namu = "https://namu.wiki/w/올드보이(영화)"
+    href = f"//duckduckgo.com/l/?uddg={urllib.parse.quote(namu)}&rut=abc"
+    assert _extract_namu_url(href) == namu
+
+
+def test_extract_namu_url_rejects_non_namu():
+    """비 namu URL → None."""
+    href = "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwikipedia.org%2Fw%2F%EC%98%AC%EB%93%9C%EB%B3%B4%EC%9D%B4"
+    assert _extract_namu_url(href) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_via_search_year_scoring(provider):
+    """DDG 결과: 2003/2013 두 후보 중 production_year=2003 것이 상위."""
+    url_2003 = "https://namu.wiki/w/올드보이(2003년영화)"
+    url_2013 = "https://namu.wiki/w/올드보이(2013년영화)"
+    ddg_html = _ddg_html(url_2013, url_2003)  # 2013이 먼저지만 2003이 상위여야
+
+    with patch("search.namu_provider.httpx") as mock_httpx:
+        resp = AsyncMock()
+        resp.status_code = 200
+        resp.text = ddg_html
+        client_instance = AsyncMock()
+        client_instance.get = AsyncMock(return_value=resp)
+        mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+        mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        sq = _sq("올드보이", production_year=2003)
+        urls = await provider._resolve_via_search(sq)
+
+    assert len(urls) >= 1
+    assert urls[0] == url_2003  # 연도 일치 → 상위
+
+
+@pytest.mark.asyncio
+async def test_resolve_via_search_empty_on_no_namu_links(provider):
+    """DDG 결과에 namu 링크 없으면 빈 리스트."""
+    ddg_html = "<html><body><a class='result__a' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fwikipedia.org%2F'>wiki</a></body></html>"
+
+    with patch("search.namu_provider.httpx") as mock_httpx:
+        resp = AsyncMock()
+        resp.status_code = 200
+        resp.text = ddg_html
+        client_instance = AsyncMock()
+        client_instance.get = AsyncMock(return_value=resp)
+        mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+        mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        urls = await provider._resolve_via_search(_sq("올드보이"))
+
+    assert urls == []
+
+
+@pytest.mark.asyncio
+async def test_search_triggers_ddg_fallback_after_disambig(provider):
+    """동음이의 허브 → 직접 URL 큐 소진 → DDG 폴백 → 정상 문서 채택."""
+    direct_url = "https://namu.wiki/w/올드보이(영화)"
+    fallback_url = "https://namu.wiki/w/올드보이"  # DDG가 찾아준 다른 URL
+
+    provider._fetch = AsyncMock(
+        side_effect=[
+            (200, direct_url, DOC_DISAMBIG_HUB),                          # 직접 URL → 동음이의 허브
+            (200, fallback_url, DOC_OK.replace("기생충", "올드보이")),     # 폴백 URL → 정상 문서
+        ]
+    )
+    provider._resolve_via_search = AsyncMock(return_value=[fallback_url])
+    provider._build_urls = lambda q: [direct_url]  # 직접 후보 1개만
+
+    docs = await provider.search(_sq("올드보이"))
+
+    provider._resolve_via_search.assert_called_once()
+    assert len(docs) == 1

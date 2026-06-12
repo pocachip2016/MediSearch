@@ -15,7 +15,9 @@
     {
       "id": "N2",
       "name": "ddg-search-fallback",
-      "status": "pending"
+      "status": "completed",
+      "summary": "DDG 검색 폴백 + 동음이의 해소, 연도 스코어링, 테스트 15/15",
+      "completed_at": "2026-06-13T00:00:00+09:00"
     },
     {
       "id": "N3",
