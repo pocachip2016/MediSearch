@@ -60,6 +60,7 @@ class MovieEvaluateRequest(BaseModel):
     kobis_movie_cd: str | None = None
     original_title: str | None = None  # 영문 위키/OMDb 검색 키 (해외영화)
     imdb_id: str | None = None          # OMDb 정확 조회용 (tt1234567 형식)
+    content_type: str | None = None   # "movie"|"series" 힌트 — OMDB type= 파라미터에 사용
     content_id: int | None = None  # mediaX 콘텐츠 ID — 응답에 echo
     require_namu: bool = False  # (레거시 alias) 웹 소스 없으면 평가 생략
     require_web: bool = False   # True: 나무위키/영문위키 둘 다 없으면 Ollama 평가 생략
@@ -86,6 +87,7 @@ class MovieEvaluateRequest(BaseModel):
             imdb_id=self.imdb_id,
             kmdb_docid=self.kmdb_docid,
             kobis_movie_cd=self.kobis_movie_cd,
+            content_type=self.content_type,
         )
 
 

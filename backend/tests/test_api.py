@@ -59,7 +59,6 @@ def test_root(client):
 @patch("main.FixtureProvider")
 def test_evaluate_movie_success(mock_provider_cls, mock_evaluator_cls, mock_runner_cls, client):
     """POST /api/movies/evaluate 성공 케이스."""
-    # mock runner 설정
     mock_runner = MagicMock()
     mock_runner.run = AsyncMock(return_value={
         "movie_query": "기생충",
@@ -78,6 +77,35 @@ def test_evaluate_movie_success(mock_provider_cls, mock_evaluator_cls, mock_runn
     assert data["movie_query"] == "기생충"
     assert data["source_count"] == 2
     assert data["facet_id"] == 1
+
+
+@patch("main.MultiSourceRunner")
+@patch("main.EvaluationEngine")
+@patch("main.build_providers")
+@patch("main.settings")
+def test_evaluate_content_type_passed_to_search_query(mock_settings, mock_build, mock_evaluator_cls, mock_runner_cls, client):
+    """content_type=series → SearchQuery.content_type 전달 확인."""
+    mock_settings.SEARCH_PROVIDERS = "omdb"
+    mock_settings.USE_FIXTURE = False
+    mock_build.return_value = [MagicMock()]
+    mock_runner = MagicMock()
+    mock_runner.run = AsyncMock(return_value={
+        "movie_query": "오징어 게임",
+        "facet": {"primary_genre": "드라마"},
+        "source_count": 1,
+        "facet_id": 2,
+        "providers_detail": [],
+    })
+    mock_runner_cls.return_value = mock_runner
+
+    response = client.post("/api/movies/evaluate", json={
+        "title": "오징어 게임",
+        "content_type": "series",
+        "imdb_id": "tt10919420",
+    })
+    assert response.status_code == 200
+    call_sq = mock_runner.run.call_args[0][0]
+    assert call_sq.content_type == "series"
 
 
 # ── POST /api/movies/enrich ──────────────────────────────────
