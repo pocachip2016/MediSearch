@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # 예: "tmdb,kmdb,playwright"
     SEARCH_PROVIDERS: str = ""
 
+    # 트랙 분리 — 대화형(즉답) vs backfill(배치)
+    # INTERACTIVE: playwright 제외 — 빠른 구조화+API provider만 (~1–2초)
+    INTERACTIVE_PROVIDERS: str = "tmdb,kmdb,omdb,wikipedia,kowiki"
+    # BACKFILL: 전체 포함 (playwright+Ollama) — 배치 워커 전용
+    BACKFILL_PROVIDERS: str = "tmdb,kmdb,playwright,wikipedia,kowiki,omdb"
+
     # LLM — Ollama 로컬 (POC 기본)
     OLLAMA_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3:4b"

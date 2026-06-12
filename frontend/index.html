@@ -161,9 +161,11 @@ input[type=text]:focus, input[type=number]:focus { border-color: var(--blue); }
     <div class="panel-title" style="margin-bottom:8px">결과</div>
     <div class="result-tabs" style="display:none" id="rtabs">
       <div class="rtab active" data-rtab="summary" onclick="switchRtab(this)">요약</div>
+      <div class="rtab" data-rtab="sources" onclick="switchRtab(this)">소스</div>
       <div class="rtab" data-rtab="raw" onclick="switchRtab(this)">JSON</div>
     </div>
     <div id="result-summary"><div class="result-empty">파이프라인 완료 후 표시됩니다</div></div>
+    <div id="result-sources" style="display:none"><div class="result-empty">소스 정보</div></div>
     <pre id="json-view" style="display:none"></pre>
   </div>
 </div>
@@ -193,6 +195,7 @@ function switchRtab(el) {
   el.classList.add("active");
   const tab = el.dataset.rtab;
   document.getElementById("result-summary").style.display = tab === "summary" ? "" : "none";
+  document.getElementById("result-sources").style.display = tab === "sources" ? "" : "none";
   document.getElementById("json-view").style.display = tab === "raw" ? "" : "none";
 }
 
@@ -427,6 +430,11 @@ function showResult(payload) {
   } else {
     renderEnrichSummary(summary, payload);
   }
+
+  // render sources_detail tab
+  if (payload.sources_detail) {
+    renderSourcesDetail(payload.sources_detail);
+  }
 }
 
 function confColor(v) {
@@ -546,6 +554,54 @@ function makeFieldRow(label, value) {
   row.className = "field-row";
   row.innerHTML = `<span class="field-name">${label}</span><span class="field-val">${value}</span>`;
   return row;
+}
+
+function renderSourcesDetail(sources) {
+  const container = document.getElementById("result-sources");
+  container.innerHTML = "";
+
+  if (!sources || sources.length === 0) {
+    container.innerHTML = '<div class="result-empty">소스 정보 없음</div>';
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%; border-collapse:collapse; font-size:.9rem";
+
+  // header
+  const thead = document.createElement("thead");
+  thead.innerHTML = `<tr style="border-bottom:2px solid var(--border)">
+    <th style="text-align:left; padding:0.5rem; color:var(--muted)">Provider</th>
+    <th style="text-align:center; padding:0.5rem; color:var(--muted)">문서</th>
+    <th style="text-align:center; padding:0.5rem; color:var(--muted)">신뢰도</th>
+    <th style="text-align:center; padding:0.5rem; color:var(--muted)">확신도</th>
+    <th style="text-align:center; padding:0.5rem; color:var(--muted)">평가</th>
+  </tr>`;
+  table.appendChild(thead);
+
+  // rows
+  const tbody = document.createElement("tbody");
+  sources.forEach(src => {
+    const row = document.createElement("tr");
+    row.style.cssText = "border-bottom:1px solid var(--border)";
+
+    const trustVal = typeof src.trust === 'number' ? (src.trust * 100).toFixed(0) + '%' : '-';
+    const confVal = typeof src.confidence === 'number' ? (src.confidence * 100).toFixed(0) + '%' : '-';
+    const docsCount = src.docs_count ?? 0;
+    const evaluated = src.evaluated ? '✓' : '✗';
+
+    row.innerHTML = `
+      <td style="padding:0.5rem">${src.provider}</td>
+      <td style="text-align:center; padding:0.5rem">${docsCount}</td>
+      <td style="text-align:center; padding:0.5rem">${trustVal}</td>
+      <td style="text-align:center; padding:0.5rem">${confVal}</td>
+      <td style="text-align:center; padding:0.5rem">${evaluated}</td>
+    `;
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+
+  container.appendChild(table);
 }
 
 /* ── Utils ── */

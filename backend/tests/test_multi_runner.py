@@ -1,4 +1,5 @@
 """tests/test_multi_runner.py — MultiSourceRunner + provider_factory 테스트."""
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -170,6 +171,44 @@ async def test_multi_runner_persist_false_no_db_write(mock_db):
 
     assert result["facet_id"] is None
     mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_multi_runner_concurrent_search(mock_db):
+    """느린 provider가 빠른 provider의 SSE 방출을 막지 않음 (동시 실행 검증)."""
+    arrival_order: list[str] = []
+
+    slow = MagicMock(spec=SearchProvider)
+    slow.provider_name = "slow"
+
+    async def slow_search(q, num=5):
+        await asyncio.sleep(0.05)
+        arrival_order.append("slow")
+        return [_doc("slow")]
+    slow.search = slow_search
+
+    fast = MagicMock(spec=SearchProvider)
+    fast.provider_name = "fast"
+
+    async def fast_search(q, num=5):
+        arrival_order.append("fast")
+        return [_doc("fast")]
+    fast.search = fast_search
+
+    ev = _make_evaluator()
+    runner = MultiSourceRunner([slow, fast], ev, mock_db)
+
+    events: list[str] = []
+
+    async def cb(event_type, payload):
+        if event_type == "provider_search":
+            events.append(payload["provider"])
+
+    await runner.run("테스트", on_event=cb)
+
+    # 동시 실행: fast가 slow보다 먼저 완료·이벤트 방출
+    assert "fast" in events and "slow" in events
+    assert events.index("fast") < events.index("slow")
 
 
 @pytest.mark.asyncio

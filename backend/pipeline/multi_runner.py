@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy.orm import Session
@@ -55,36 +56,22 @@ class MultiSourceRunner:
             "query": {"title": sq.title, "tmdb_id": sq.tmdb_id, "imdb_id": sq.imdb_id},
         })
 
-        # ── Phase 1: 모든 provider 검색 (평가 전 수행) ────────────────────────
-        docs_by_provider: dict[str, list] = {}
-        providers_detail: list[dict] = []
-
-        for provider in self.providers:
-            try:
-                docs = await provider.search(sq)
-            except Exception as e:
-                logger.warning(f"[multi] {provider.provider_name} 검색 실패: {e}")
-                docs = []
-            docs_by_provider[provider.provider_name] = docs
-            if docs:
-                logger.info(f"[multi] {provider.provider_name} → {len(docs)}개")
-            else:
-                logger.info(f"[multi] {provider.provider_name} → 0개 (건너뜀)")
-
-            providers_detail.append({
-                "provider": provider.provider_name,
+        # ── Phase 1: 모든 provider 동시 검색, provider_search 이벤트 도착순 emit ─
+        search_results = await asyncio.gather(
+            *[self._search_one(p, sq, on_event) for p in self.providers]
+        )
+        docs_by_provider: dict[str, list] = dict(search_results)
+        providers_detail: list[dict] = [
+            {
+                "provider": name,
                 "docs_count": len(docs),
                 "status": "ok" if docs else "empty",
                 "trust": None,
                 "confidence": None,
                 "evaluated": False,
-            })
-            await emit(on_event, "provider_search", {
-                "provider": provider.provider_name,
-                "docs_count": len(docs),
-                "status": "ok" if docs else "empty",
-                "docs": doc_previews(docs),
-            })
+            }
+            for name, docs in search_results
+        ]
 
         # ── require_namu 조기 종료: 웹 소스(namu+wiki) 둘 다 없을 때만 생략 ─────
         web_has_docs = bool(
@@ -165,6 +152,27 @@ class MultiSourceRunner:
             "facet_id": facet_id,
             "providers_detail": providers_detail,
         }
+
+    async def _search_one(
+        self, provider: SearchProvider, sq: SearchQuery, on_event: EventCallback
+    ) -> tuple[str, list]:
+        """단일 provider 검색 + 도착 즉시 provider_search 이벤트 emit."""
+        try:
+            docs = await provider.search(sq)
+        except Exception as e:
+            logger.warning(f"[multi] {provider.provider_name} 검색 실패: {e}")
+            docs = []
+        if docs:
+            logger.info(f"[multi] {provider.provider_name} → {len(docs)}개")
+        else:
+            logger.info(f"[multi] {provider.provider_name} → 0개 (건너뜀)")
+        await emit(on_event, "provider_search", {
+            "provider": provider.provider_name,
+            "docs_count": len(docs),
+            "status": "ok" if docs else "empty",
+            "docs": doc_previews(docs),
+        })
+        return provider.provider_name, docs
 
     async def _save_sources(self, query: str, docs, persist: bool = True) -> int:
         if not persist:

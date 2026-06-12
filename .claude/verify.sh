@@ -73,6 +73,9 @@ case "$1" in
   ui-3)
     $PYTEST tests/test_trace_api.py -v -k "not integration"
     ;;
+  provider-tracks)
+    $PYTEST tests/test_multi_runner.py -v -k "not integration"
+    ;;
   all)
     $PYTEST tests/ -v
     ;;

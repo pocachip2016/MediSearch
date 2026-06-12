@@ -189,6 +189,12 @@ async def root():
     return {"message": "MediSearch API v0.1.0", "docs": "/docs"}
 
 
+def _get_interactive_provider_names() -> list[str]:
+    """대화형 트랙 provider 목록 — INTERACTIVE_PROVIDERS 우선, 폴백은 SEARCH_PROVIDERS."""
+    names_str = settings.INTERACTIVE_PROVIDERS or settings.SEARCH_PROVIDERS
+    return [p.strip() for p in names_str.split(",") if p.strip()]
+
+
 @app.post("/api/movies/evaluate")
 async def evaluate_movie(
     req: MovieEvaluateRequest,
@@ -197,13 +203,11 @@ async def evaluate_movie(
     """영화 평가 파이프라인 실행: search → evaluate → save."""
     evaluator = EvaluationEngine()
 
-    provider_names = [p.strip() for p in settings.SEARCH_PROVIDERS.split(",") if p.strip()]
+    provider_names = _get_interactive_provider_names()
     if provider_names:
-        # 멀티소스 앙상블
         providers = build_providers(provider_names)
         runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db)
     else:
-        # 단일 provider (기존 경로)
         if settings.SEARCH_PROVIDER == "playwright":
             search_provider = PlaywrightProvider(headless=True, timeout_ms=15000)
         else:
@@ -236,8 +240,7 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
     mediaX 캐시 미스 시 메타 보완용. 구조화 provider(omdb/tmdb/kmdb)는 LLM 없이
     직접 추출, 텍스트 provider(namu/wiki/kowiki)는 Ollama 추출.
     """
-    provider_names_str = settings.SEARCH_PROVIDERS or settings.SEARCH_PROVIDER
-    all_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    all_names = _get_interactive_provider_names() or [settings.SEARCH_PROVIDER]
     # fast=True: 구조화(로컬DB+외부구조화) provider만 — LLM 0회, ~1.5s
     _STRUCTURED = {"tmdb", "kmdb", "omdb"}
     provider_names = [n for n in all_names if n in _STRUCTURED] if req.fast else all_names
@@ -287,9 +290,7 @@ async def evaluate_movie_stream(
     이벤트 형식: data: {"type": "<event>", "payload": {...}}\\n\\n
     최종 이벤트: type=done (payload=전체 결과) 또는 type=error (payload={"message":"..."})
     """
-    provider_names = [p.strip() for p in settings.SEARCH_PROVIDERS.split(",") if p.strip()]
-    if not provider_names:
-        provider_names = [settings.SEARCH_PROVIDER]
+    provider_names = _get_interactive_provider_names() or [settings.SEARCH_PROVIDER]
     providers = build_providers(provider_names, headless=headless)
     evaluator = EvaluationEngine()
     runner = MultiSourceRunner(providers, evaluator, db)
@@ -347,8 +348,7 @@ async def enrich_movie_stream(
     db=Depends(get_db),
 ):
     """enrich 파이프라인 SSE 스트림 — 단계별 이벤트를 text/event-stream으로 전송."""
-    provider_names_str = settings.SEARCH_PROVIDERS or settings.SEARCH_PROVIDER
-    all_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    all_names = _get_interactive_provider_names() or [settings.SEARCH_PROVIDER]
     _STRUCTURED = {"tmdb", "kmdb", "omdb"}
     provider_names = [n for n in all_names if n in _STRUCTURED] if req.fast else all_names
     providers = build_providers(provider_names, headless=headless)
