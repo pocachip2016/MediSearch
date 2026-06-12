@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediSearch Trace</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+  h1 { color: #58a6ff; margin-bottom: 16px; font-size: 1.1rem; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  input, select { background: #161b22; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; }
+  input[type=text] { flex: 1; min-width: 160px; }
+  input[type=number] { width: 90px; }
+  button { background: #238636; border: 1px solid #2ea043; color: #fff;
+    padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+  button:hover { background: #2ea043; }
+  button.stop { background: #da3633; border-color: #f85149; }
+  button.stop:hover { background: #f85149; }
+  #status { font-size: 0.8rem; color: #8b949e; margin-bottom: 8px; }
+  #events { border: 1px solid #30363d; border-radius: 6px; height: 420px;
+    overflow-y: auto; padding: 10px; background: #161b22; }
+  .event { padding: 5px 8px; margin-bottom: 4px; border-radius: 3px;
+    border-left: 3px solid #30363d; font-size: 0.78rem; line-height: 1.4; }
+  .event.search_start  { border-color: #58a6ff; }
+  .event.provider_search { border-color: #79c0ff; }
+  .event.eval_start    { border-color: #d29922; }
+  .event.extract_start { border-color: #d29922; }
+  .event.provider_eval { border-color: #3fb950; }
+  .event.text_extract  { border-color: #56d364; }
+  .event.merge         { border-color: #bc8cff; }
+  .event.done          { border-color: #3fb950; background: #0d2119; }
+  .event.error         { border-color: #f85149; background: #2d0f10; }
+  .event.keepalive     { color: #484f58; border-color: #21262d; }
+  .ev-type { font-weight: bold; margin-right: 6px; }
+  .ev-payload { color: #8b949e; }
+  .ev-payload.expanded { color: #c9d1d9; white-space: pre-wrap; }
+  details summary { cursor: pointer; color: #58a6ff; margin-top: 4px; font-size: 0.75rem; }
+  .mode-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .mode-tab { padding: 4px 12px; border-radius: 4px; border: 1px solid #30363d;
+    cursor: pointer; font-size: 0.8rem; background: #161b22; }
+  .mode-tab.active { background: #1f6feb; border-color: #388bfd; color: #fff; }
+</style>
+</head>
+<body>
+<h1>MediSearch — SSE Trace</h1>
+
+<div class="mode-tabs">
+  <div class="mode-tab active" data-mode="evaluate">evaluate</div>
+  <div class="mode-tab" data-mode="enrich">enrich</div>
+</div>
+
+<div class="form-row">
+  <input type="text" id="title" placeholder="영화 제목 (예: 올드보이)" value="">
+  <input type="number" id="tmdb_id" placeholder="tmdb_id">
+  <input type="text" id="imdb_id" placeholder="tt0364569">
+  <input type="number" id="year" placeholder="연도">
+  <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;">
+    <input type="checkbox" id="require_web"> 웹검색
+  </label>
+  <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;">
+    <input type="checkbox" id="headless" checked> headless
+  </label>
+  <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;" id="fast-label" style="display:none">
+    <input type="checkbox" id="fast"> fast
+  </label>
+  <button id="run-btn" onclick="run()">실행</button>
+  <button class="stop" id="stop-btn" onclick="stop()" style="display:none">중단</button>
+</div>
+
+<div id="status">대기 중</div>
+<div id="events"></div>
+
+<script>
+let es = null;
+let mode = "evaluate";
+let eventCount = 0;
+
+document.querySelectorAll(".mode-tab").forEach(t => {
+  t.addEventListener("click", () => {
+    mode = t.dataset.mode;
+    document.querySelectorAll(".mode-tab").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("fast-label").style.display = mode === "enrich" ? "" : "none";
+  });
+});
+
+function run() {
+  stop();
+  eventCount = 0;
+  document.getElementById("events").innerHTML = "";
+  const title = document.getElementById("title").value.trim();
+  if (!title) { setStatus("제목을 입력하세요"); return; }
+
+  const headless = document.getElementById("headless").checked;
+  const body = { title };
+  const tmdb = document.getElementById("tmdb_id").value;
+  const imdb = document.getElementById("imdb_id").value;
+  const year = document.getElementById("year").value;
+  const rw = document.getElementById("require_web").checked;
+  if (tmdb) body.tmdb_id = parseInt(tmdb);
+  if (imdb) body.imdb_id = imdb;
+  if (year) body.production_year = parseInt(year);
+  body.require_web = rw;
+  if (mode === "enrich") body.fast = document.getElementById("fast").checked;
+
+  const url = `/api/movies/${mode}/stream?headless=${headless}`;
+  setStatus(`연결 중… (POST ${url})`);
+
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(resp => {
+    if (!resp.ok) { setStatus(`오류 ${resp.status}`); return; }
+    document.getElementById("run-btn").style.display = "none";
+    document.getElementById("stop-btn").style.display = "";
+    setStatus("스트림 수신 중…");
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    function pump() {
+      reader.read().then(({ done, value }) => {
+        if (done) { finish(); return; }
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        lines.forEach(line => {
+          line = line.trim();
+          if (!line) return;
+          if (line.startsWith(":")) { addEvent("keepalive", "·"); return; }
+          if (line.startsWith("data:")) {
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              addEvent(ev.type, ev.payload);
+            } catch {}
+          }
+        });
+        pump();
+      }).catch(finish);
+    }
+    pump();
+  }).catch(e => { setStatus("연결 오류: " + e.message); });
+}
+
+function stop() {
+  if (es) { es.close(); es = null; }
+  document.getElementById("run-btn").style.display = "";
+  document.getElementById("stop-btn").style.display = "none";
+}
+
+function finish() {
+  stop();
+  setStatus(`완료 — ${eventCount}개 이벤트`);
+}
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+
+function addEvent(type, payload) {
+  eventCount++;
+  const div = document.createElement("div");
+  div.className = "event " + type;
+  const ts = new Date().toLocaleTimeString("ko-KR", { hour12: false, fractionalSecondDigits: 1 });
+  const span = document.createElement("span");
+  span.className = "ev-type";
+  span.textContent = `[${ts}] ${type}`;
+  div.appendChild(span);
+
+  if (type === "done" || type === "error") {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = type === "done" ? "결과 펼치기" : "오류 상세";
+    details.appendChild(summary);
+    const pre = document.createElement("pre");
+    pre.className = "ev-payload expanded";
+    pre.textContent = JSON.stringify(payload, null, 2);
+    details.appendChild(pre);
+    div.appendChild(details);
+  } else if (type === "keepalive") {
+    const s = document.createElement("span");
+    s.className = "ev-payload";
+    s.textContent = payload;
+    div.appendChild(s);
+  } else {
+    const summary = summarize(type, payload);
+    const s = document.createElement("span");
+    s.className = "ev-payload";
+    s.textContent = summary;
+    div.appendChild(s);
+    const details = document.createElement("details");
+    const ds = document.createElement("summary");
+    ds.textContent = "상세";
+    details.appendChild(ds);
+    const pre = document.createElement("pre");
+    pre.className = "ev-payload expanded";
+    pre.textContent = JSON.stringify(payload, null, 2);
+    details.appendChild(pre);
+    div.appendChild(details);
+  }
+
+  const container = document.getElementById("events");
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function summarize(type, p) {
+  if (!p) return "";
+  switch (type) {
+    case "search_start":
+      return `providers: [${(p.providers || []).join(", ")}]  query: "${p.query?.title}"`;
+    case "provider_search":
+      return `${p.provider}  docs=${p.docs_count}  status=${p.status}`;
+    case "eval_start": case "extract_start":
+      return `providers: [${(p.providers || []).join(", ")}]`;
+    case "provider_eval":
+      return `${p.provider}  trust=${p.trust}  confidence=${p.confidence}`;
+    case "text_extract":
+      return `confidence=${p.confidence}  providers=[${(p.text_providers || []).join(", ")}]`;
+    case "merge":
+      return `confidence=${p.confidence}  coverage=[${(p.coverage || []).join(", ")}]`;
+    default:
+      return JSON.stringify(p).slice(0, 120);
+  }
+}
+</script>
+</body>
+</html>

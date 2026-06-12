@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediSearch</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --blue: #58a6ff;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --purple: #bc8cff;
+  --red: #f85149;
+  --orange: #e3b341;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+  background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── Header ── */
+header { background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 12px 20px; display: flex; align-items: center; gap: 16px; }
+header h1 { font-size: 1rem; color: var(--blue); font-weight: 600; }
+.mode-tabs { display: flex; gap: 4px; }
+.tab { padding: 4px 14px; border-radius: 20px; border: 1px solid var(--border);
+  cursor: pointer; font-size: 0.8rem; background: transparent; color: var(--muted); transition: all .15s; }
+.tab:hover { border-color: var(--blue); color: var(--blue); }
+.tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ── Form ── */
+.form-area { padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.form-row + .form-row { margin-top: 8px; }
+input[type=text], input[type=number] {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 6px; font-size: 0.82rem; outline: none; }
+input[type=text]:focus, input[type=number]:focus { border-color: var(--blue); }
+#title-input { flex: 1; min-width: 200px; }
+.num-input { width: 90px; }
+.str-input { width: 120px; }
+.checkbox-label { display: flex; align-items: center; gap: 5px;
+  font-size: 0.8rem; color: var(--muted); cursor: pointer; user-select: none; }
+.checkbox-label input { accent-color: var(--blue); }
+.checkbox-label:hover { color: var(--text); }
+#run-btn {
+  background: #1a7f37; border: 1px solid var(--green); color: #fff;
+  padding: 6px 18px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  font-weight: 600; transition: background .15s; margin-left: auto; }
+#run-btn:hover { background: var(--green); }
+#run-btn:disabled { opacity: .5; cursor: default; }
+#stop-btn { background: #8a1d1a; border: 1px solid var(--red); color: #fff;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; display: none; }
+#stop-btn:hover { background: var(--red); }
+
+/* ── Main layout ── */
+.main { display: grid; grid-template-columns: 340px 1fr; min-height: calc(100vh - 110px); }
+@media (max-width: 720px) { .main { grid-template-columns: 1fr; } }
+
+/* ── Timeline panel ── */
+.timeline-panel { border-right: 1px solid var(--border); padding: 16px;
+  overflow-y: auto; max-height: calc(100vh - 110px); }
+.panel-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 12px; }
+.timeline-empty { color: var(--muted); font-size: 0.8rem; padding: 20px 0; }
+
+/* timeline entry */
+.tl-entry { display: flex; gap: 10px; margin-bottom: 8px; }
+.tl-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0; font-size: 11px; margin-top: 1px;
+  border: 2px solid var(--border); color: var(--muted); background: var(--bg); }
+.tl-icon.active { border-color: var(--yellow); color: var(--yellow); animation: pulse 1s infinite; }
+.tl-icon.done   { border-color: var(--green); color: var(--green); background: #0d2119; }
+.tl-icon.error  { border-color: var(--red); color: var(--red); background: #2d0f10; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+.tl-body { flex: 1; }
+.tl-type { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+.tl-detail { font-size: 0.74rem; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+/* provider chips */
+.provider-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.pchip { font-size: 0.7rem; padding: 2px 8px; border-radius: 12px;
+  border: 1px solid var(--border); color: var(--muted); background: var(--bg); transition: all .2s; }
+.pchip.searching { border-color: var(--yellow); color: var(--yellow); }
+.pchip.evaluating { border-color: var(--blue); color: var(--blue); }
+.pchip.done { border-color: var(--green); color: var(--green); background: #0d2119; }
+.pchip.error { border-color: var(--red); color: var(--red); }
+
+/* ── Result panel ── */
+.result-panel { padding: 16px; overflow-y: auto; max-height: calc(100vh - 110px); }
+.result-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.rtab { padding: 3px 12px; border-radius: 4px; border: 1px solid var(--border);
+  cursor: pointer; font-size: 0.78rem; color: var(--muted); background: var(--bg); }
+.rtab.active { background: var(--surface); border-color: var(--border); color: var(--text); }
+.result-empty { color: var(--muted); font-size: 0.8rem; padding: 20px 0; }
+
+/* summary cards */
+.summary-section { margin-bottom: 14px; }
+.summary-section h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 6px; }
+.field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.78rem; }
+.field-name { color: var(--muted); width: 140px; flex-shrink: 0; }
+.field-val { color: var(--text); flex: 1; }
+.score-bar { flex: 1; background: var(--border); border-radius: 3px; height: 6px;
+  position: relative; overflow: hidden; }
+.score-fill { height: 100%; border-radius: 3px; background: var(--blue); transition: width .4s; }
+.score-num { color: var(--blue); width: 36px; text-align: right; font-size: 0.74rem; }
+.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.7rem;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); margin: 2px; }
+.confidence-row { display: flex; align-items: center; gap: 8px; font-size: 0.8rem;
+  padding: 8px; background: var(--surface); border-radius: 6px; margin-top: 8px; }
+.conf-val { font-size: 1rem; font-weight: 600; color: var(--green); }
+
+/* raw JSON */
+#json-view { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.76rem;
+  line-height: 1.5; white-space: pre-wrap; color: var(--text); overflow-x: auto; }
+
+/* status bar */
+#status-bar { font-size: 0.75rem; color: var(--muted); padding: 6px 20px;
+  border-top: 1px solid var(--border); background: var(--surface); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>MediSearch</h1>
+  <div class="mode-tabs">
+    <div class="tab active" data-mode="evaluate">evaluate</div>
+    <div class="tab" data-mode="enrich">enrich</div>
+  </div>
+</header>
+
+<div class="form-area">
+  <div class="form-row">
+    <input type="text" id="title-input" placeholder="영화 제목 (예: 올드보이)" autocomplete="off">
+    <input type="number" id="tmdb-input" class="num-input" placeholder="tmdb_id">
+    <input type="text" id="imdb-input" class="str-input" placeholder="tt0364569">
+    <input type="number" id="year-input" class="num-input" placeholder="연도">
+  </div>
+  <div class="form-row">
+    <label class="checkbox-label"><input type="checkbox" id="req-web"> require_web</label>
+    <label class="checkbox-label" id="fast-opt" style="display:none"><input type="checkbox" id="fast"> fast (구조화 provider만)</label>
+    <label class="checkbox-label"><input type="checkbox" id="headless" checked> headless</label>
+    <button id="run-btn" onclick="run()">▶ 실행</button>
+    <button id="stop-btn" onclick="stopStream()">■ 중단</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="timeline-panel">
+    <div class="panel-title">파이프라인</div>
+    <div id="timeline"><div class="timeline-empty">실행 대기 중</div></div>
+  </div>
+
+  <div class="result-panel">
+    <div class="panel-title" style="margin-bottom:8px">결과</div>
+    <div class="result-tabs" style="display:none" id="rtabs">
+      <div class="rtab active" data-rtab="summary" onclick="switchRtab(this)">요약</div>
+      <div class="rtab" data-rtab="raw" onclick="switchRtab(this)">JSON</div>
+    </div>
+    <div id="result-summary"><div class="result-empty">파이프라인 완료 후 표시됩니다</div></div>
+    <pre id="json-view" style="display:none"></pre>
+  </div>
+</div>
+
+<div id="status-bar">대기 중</div>
+
+<script>
+/* ── State ── */
+let mode = "evaluate";
+let reader = null;
+let providers = [];   // from search_start
+let providerState = {};  // {name: "searching"|"evaluating"|"done"|"error"}
+let tlEntries = {};      // id → DOM element
+
+/* ── Mode switch ── */
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    mode = t.dataset.mode;
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("fast-opt").style.display = mode === "enrich" ? "" : "none";
+  });
+});
+
+function switchRtab(el) {
+  document.querySelectorAll(".rtab").forEach(x => x.classList.remove("active"));
+  el.classList.add("active");
+  const tab = el.dataset.rtab;
+  document.getElementById("result-summary").style.display = tab === "summary" ? "" : "none";
+  document.getElementById("json-view").style.display = tab === "raw" ? "" : "none";
+}
+
+/* ── Run ── */
+function run() {
+  stopStream();
+  clearUI();
+
+  const title = document.getElementById("title-input").value.trim();
+  if (!title) { setStatus("제목을 입력하세요"); return; }
+
+  const body = { title };
+  const tmdb = document.getElementById("tmdb-input").value;
+  const imdb = document.getElementById("imdb-input").value;
+  const year = document.getElementById("year-input").value;
+  if (tmdb) body.tmdb_id = parseInt(tmdb);
+  if (imdb) body.imdb_id = imdb;
+  if (year) body.production_year = parseInt(year);
+  body.require_web = document.getElementById("req-web").checked;
+  if (mode === "enrich") body.fast = document.getElementById("fast").checked;
+
+  const headless = document.getElementById("headless").checked;
+  const url = `/api/movies/${mode}/stream?headless=${headless}`;
+
+  setStatus(`연결 중… ${title}`);
+  document.getElementById("run-btn").disabled = true;
+  document.getElementById("stop-btn").style.display = "";
+
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(resp => {
+    if (!resp.ok) { setStatus(`오류 ${resp.status}`); finish(); return; }
+    setStatus(`스트리밍 중… — ${title}`);
+    const dec = new TextDecoder();
+    reader = resp.body.getReader();
+    let buf = "";
+
+    function pump() {
+      reader.read().then(({ done, value }) => {
+        if (done) { finish(); return; }
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        lines.forEach(line => {
+          line = line.trim();
+          if (!line || line.startsWith(":")) return;
+          if (line.startsWith("data:")) {
+            try { handleEvent(JSON.parse(line.slice(5).trim())); } catch {}
+          }
+        });
+        pump();
+      }).catch(finish);
+    }
+    pump();
+  }).catch(e => { setStatus("연결 오류: " + e.message); finish(); });
+}
+
+function stopStream() {
+  if (reader) { reader.cancel(); reader = null; }
+  finish();
+}
+
+function finish() {
+  document.getElementById("run-btn").disabled = false;
+  document.getElementById("stop-btn").style.display = "none";
+}
+
+/* ── Event handlers ── */
+function handleEvent(ev) {
+  const { type, payload: p } = ev;
+  switch (type) {
+    case "search_start":
+      providers = p.providers || [];
+      providerState = {};
+      providers.forEach(n => { providerState[n] = "idle"; });
+      addTlEntry("search", "search_start",
+        `providers: ${providers.join(", ")}  query: "${p.query?.title}"`,
+        "active");
+      renderProviderGrid();
+      break;
+
+    case "provider_search":
+      providerState[p.provider] = p.status === "ok" ? "searching" : "error";
+      updateProviderGrid();
+      updateTlDetail("search", `provider_search: ${p.provider} (${p.docs_count}건, ${p.status})`);
+      break;
+
+    case "eval_start": case "extract_start":
+      finishTlEntry("search");
+      providers.forEach(n => { if (providerState[n] === "searching") providerState[n] = "evaluating"; });
+      updateProviderGrid();
+      addTlEntry("eval", type, `evaluating: ${(p.providers||[]).join(", ")}`, "active");
+      break;
+
+    case "provider_eval":
+      providerState[p.provider] = "done";
+      updateProviderGrid();
+      updateTlDetail("eval", `provider_eval: ${p.provider} trust=${p.trust} conf=${p.confidence}`);
+      break;
+
+    case "text_extract":
+      updateTlDetail("eval", `text_extract: conf=${p.confidence}`);
+      break;
+
+    case "merge":
+      finishTlEntry("eval");
+      addTlEntry("merge", "merge",
+        `confidence=${p.confidence}  coverage=[${(p.coverage||[]).join(", ")}]`, "done");
+      break;
+
+    case "done":
+      providers.forEach(n => { if (providerState[n] !== "error") providerState[n] = "done"; });
+      updateProviderGrid();
+      addTlEntry("done-ev", "done", "완료", "done");
+      showResult(p);
+      setStatus(`완료 — ${p.movie_query || ""}`);
+      break;
+
+    case "error":
+      addTlEntry("error-ev", "error", p.message || "알 수 없는 오류", "error");
+      setStatus("오류: " + (p.message || ""));
+      break;
+  }
+}
+
+/* ── Timeline helpers ── */
+function addTlEntry(id, type, detail, state) {
+  const container = document.getElementById("timeline");
+  const empty = container.querySelector(".timeline-empty");
+  if (empty) empty.remove();
+
+  const div = document.createElement("div");
+  div.className = "tl-entry";
+  div.id = "tl-" + id;
+
+  const icon = document.createElement("div");
+  icon.className = "tl-icon " + state;
+  icon.textContent = iconFor(state);
+  div.appendChild(icon);
+
+  const body = document.createElement("div");
+  body.className = "tl-body";
+  const typeEl = document.createElement("div");
+  typeEl.className = "tl-type";
+  typeEl.textContent = type;
+  body.appendChild(typeEl);
+  const detailEl = document.createElement("div");
+  detailEl.className = "tl-detail";
+  detailEl.id = "tl-detail-" + id;
+  detailEl.textContent = detail;
+  body.appendChild(detailEl);
+  div.appendChild(body);
+
+  container.appendChild(div);
+  tlEntries[id] = div;
+
+  if (id === "search") {
+    const grid = document.createElement("div");
+    grid.className = "provider-grid";
+    grid.id = "provider-grid";
+    body.appendChild(grid);
+    renderProviderGrid();
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function updateTlDetail(id, text) {
+  const el = document.getElementById("tl-detail-" + id);
+  if (el) el.textContent = text;
+}
+
+function finishTlEntry(id) {
+  const el = document.getElementById("tl-" + id);
+  if (el) {
+    const icon = el.querySelector(".tl-icon");
+    icon.className = "tl-icon done";
+    icon.textContent = "✓";
+  }
+}
+
+function iconFor(state) {
+  return { active: "●", done: "✓", error: "✗", idle: "○" }[state] || "○";
+}
+
+/* ── Provider grid ── */
+function renderProviderGrid() {
+  const grid = document.getElementById("provider-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  providers.forEach(name => {
+    const chip = document.createElement("span");
+    chip.className = "pchip " + (providerState[name] || "idle");
+    chip.id = "pc-" + name;
+    chip.textContent = name;
+    grid.appendChild(chip);
+  });
+}
+
+function updateProviderGrid() {
+  providers.forEach(name => {
+    const chip = document.getElementById("pc-" + name);
+    if (chip) chip.className = "pchip " + (providerState[name] || "idle");
+  });
+}
+
+/* ── Result rendering ── */
+function showResult(payload) {
+  document.getElementById("rtabs").style.display = "";
+  document.getElementById("json-view").textContent = JSON.stringify(payload, null, 2);
+
+  const summary = document.getElementById("result-summary");
+  summary.innerHTML = "";
+
+  const confidence = payload.confidence ??
+    payload.facet?.confidence ??
+    payload.metadata?.confidence ?? null;
+
+  // confidence bar
+  if (confidence !== null) {
+    const confRow = document.createElement("div");
+    confRow.className = "confidence-row";
+    confRow.innerHTML = `<span style="color:var(--muted);font-size:.78rem">신뢰도</span>
+      <span class="conf-val">${(confidence * 100).toFixed(0)}%</span>
+      <div class="score-bar" style="flex:1"><div class="score-fill" style="width:${confidence*100}%;background:${confColor(confidence)}"></div></div>`;
+    summary.appendChild(confRow);
+  }
+
+  if (mode === "evaluate") {
+    renderEvaluateSummary(summary, payload);
+  } else {
+    renderEnrichSummary(summary, payload);
+  }
+}
+
+function confColor(v) {
+  if (v >= 0.75) return "var(--green)";
+  if (v >= 0.5) return "var(--yellow)";
+  return "var(--red)";
+}
+
+function renderEvaluateSummary(container, payload) {
+  const facet = payload.facet || payload;
+  const SCORES = ["tension","immersion","boredom_risk","rewatch_value","attention",
+    "emotional_energy","violence","gore","sexual","spoiler","sentiment"];
+  const ENUMS = ["primary_genre","conflict","ending_type","pacing_reaction","ending_reaction"];
+  const VOCABS = ["sub_genre","theme","mood","emotional_aftertaste"];
+
+  // enums
+  if (ENUMS.some(k => facet[k])) {
+    const sec = makeSection("분류");
+    ENUMS.forEach(k => {
+      if (facet[k] != null) sec.appendChild(makeFieldRow(k, facet[k]));
+    });
+    container.appendChild(sec);
+  }
+
+  // scores
+  const scoreFields = SCORES.filter(k => facet[k] != null);
+  if (scoreFields.length) {
+    const sec = makeSection("점수");
+    scoreFields.forEach(k => {
+      const v = facet[k];
+      const row = document.createElement("div");
+      row.className = "field-row";
+      row.innerHTML = `<span class="field-name">${k}</span>
+        <div class="score-bar"><div class="score-fill" style="width:${v*100}%"></div></div>
+        <span class="score-num">${v.toFixed(2)}</span>`;
+      sec.appendChild(row);
+    });
+    container.appendChild(sec);
+  }
+
+  // vocab lists
+  VOCABS.forEach(k => {
+    const arr = facet[k];
+    if (Array.isArray(arr) && arr.length) {
+      const sec = makeSection(k);
+      const wrap = document.createElement("div");
+      arr.forEach(v => {
+        const b = document.createElement("span");
+        b.className = "badge";
+        b.textContent = v;
+        wrap.appendChild(b);
+      });
+      sec.appendChild(wrap);
+      container.appendChild(sec);
+    }
+  });
+}
+
+function renderEnrichSummary(container, payload) {
+  const meta = payload.metadata || {};
+  const FIELDS = [
+    ["content_type","유형"], ["production_year","제작연도"], ["original_title","원제"],
+    ["runtime_minutes","러닝타임"], ["countries","국가"], ["genres","장르"],
+    ["directors","감독"], ["cast","출연"], ["story","줄거리"],
+  ];
+
+  FIELDS.forEach(([k, label]) => {
+    const v = meta[k];
+    if (v == null) return;
+    let display;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return;
+      if (typeof v[0] === "object") {
+        display = v.map(x => x.name || JSON.stringify(x)).join(", ");
+      } else {
+        display = v.join(", ");
+      }
+    } else {
+      display = String(v);
+    }
+    const sec = makeSection(label);
+    const val = document.createElement("div");
+    val.className = "field-val";
+    val.style.fontSize = "0.82rem";
+    val.textContent = display;
+    sec.appendChild(val);
+    container.appendChild(sec);
+  });
+
+  // provenance
+  const prov = meta._provenance;
+  if (prov && Object.keys(prov).length) {
+    const sec = makeSection("출처 (_provenance)");
+    const wrap = document.createElement("div");
+    Object.entries(prov).forEach(([field, sources]) => {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = `${field}: ${Array.isArray(sources) ? sources.join("+") : sources}`;
+      wrap.appendChild(b);
+    });
+    sec.appendChild(wrap);
+    container.appendChild(sec);
+  }
+}
+
+function makeSection(title) {
+  const sec = document.createElement("div");
+  sec.className = "summary-section";
+  const h3 = document.createElement("h3");
+  h3.textContent = title;
+  sec.appendChild(h3);
+  return sec;
+}
+
+function makeFieldRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "field-row";
+  row.innerHTML = `<span class="field-name">${label}</span><span class="field-val">${value}</span>`;
+  return row;
+}
+
+/* ── Utils ── */
+function clearUI() {
+  providers = [];
+  providerState = {};
+  tlEntries = {};
+  document.getElementById("timeline").innerHTML = '<div class="timeline-empty">연결 중…</div>';
+  document.getElementById("result-summary").innerHTML = '<div class="result-empty">파이프라인 완료 후 표시됩니다</div>';
+  document.getElementById("json-view").textContent = "";
+  document.getElementById("json-view").style.display = "none";
+  document.getElementById("rtabs").style.display = "none";
+}
+
+function setStatus(msg) {
+  document.getElementById("status-bar").textContent = msg;
+}
+
+// Enter키로 실행
+document.getElementById("title-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") run();
+});
+</script>
+</body>
+</html>

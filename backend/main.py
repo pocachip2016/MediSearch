@@ -1,5 +1,10 @@
-from fastapi import FastAPI, Depends
+import asyncio
+import json
+import os
+
+from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 import logging
@@ -269,6 +274,148 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
         skipped_reason=result.get("skipped_reason"),
         sources_detail=result.get("providers_detail"),
     )
+
+
+@app.post("/api/movies/evaluate/stream")
+async def evaluate_movie_stream(
+    req: MovieEvaluateRequest,
+    headless: bool = Query(True, description="playwright 브라우저 headless 모드"),
+    db=Depends(get_db),
+):
+    """evaluate 파이프라인 SSE 스트림 — 단계별 이벤트를 text/event-stream으로 전송.
+
+    이벤트 형식: data: {"type": "<event>", "payload": {...}}\\n\\n
+    최종 이벤트: type=done (payload=전체 결과) 또는 type=error (payload={"message":"..."})
+    """
+    provider_names = [p.strip() for p in settings.SEARCH_PROVIDERS.split(",") if p.strip()]
+    if not provider_names:
+        provider_names = [settings.SEARCH_PROVIDER]
+    providers = build_providers(provider_names, headless=headless)
+    evaluator = EvaluationEngine()
+    runner = MultiSourceRunner(providers, evaluator, db)
+    sq = req.to_search_query()
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+        result_holder: dict = {}
+
+        async def on_event(event_type: str, payload: dict) -> None:
+            await queue.put(
+                f"data: {json.dumps({'type': event_type, 'payload': payload}, ensure_ascii=False)}\n\n"
+            )
+
+        async def run_task():
+            try:
+                result = await runner.run(sq, require_namu=req.need_web, on_event=on_event)
+                result_holder["ok"] = result
+            except Exception as exc:
+                result_holder["error"] = str(exc)
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run_task())
+        while True:
+            try:
+                chunk = await asyncio.wait_for(queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+            if chunk is None:
+                break
+            yield chunk
+        await task
+        if "ok" in result_holder:
+            res = result_holder["ok"]
+            # sources_detail 키 정규화 (기존 providers_detail alias)
+            res.setdefault("sources_detail", res.get("providers_detail"))
+            yield f"data: {json.dumps({'type': 'done', 'payload': res}, ensure_ascii=False)}\n\n"
+        else:
+            msg = result_holder.get("error", "unknown error")
+            yield f"data: {json.dumps({'type': 'error', 'payload': {'message': msg}}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/movies/enrich/stream")
+async def enrich_movie_stream(
+    req: MovieEnrichRequest,
+    headless: bool = Query(True, description="playwright 브라우저 headless 모드"),
+    db=Depends(get_db),
+):
+    """enrich 파이프라인 SSE 스트림 — 단계별 이벤트를 text/event-stream으로 전송."""
+    provider_names_str = settings.SEARCH_PROVIDERS or settings.SEARCH_PROVIDER
+    all_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    _STRUCTURED = {"tmdb", "kmdb", "omdb"}
+    provider_names = [n for n in all_names if n in _STRUCTURED] if req.fast else all_names
+    providers = build_providers(provider_names, headless=headless)
+    extractor = MetadataExtractionEngine()
+    runner = MetadataRunner(providers, extractor, db)
+    sq = req.to_search_query()
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+        result_holder: dict = {}
+
+        async def on_event(event_type: str, payload: dict) -> None:
+            await queue.put(
+                f"data: {json.dumps({'type': event_type, 'payload': payload}, ensure_ascii=False)}\n\n"
+            )
+
+        async def run_task():
+            try:
+                result = await runner.run(sq, require_web=req.require_web, on_event=on_event)
+                result_holder["ok"] = result
+            except Exception as exc:
+                result_holder["error"] = str(exc)
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(run_task())
+        while True:
+            try:
+                chunk = await asyncio.wait_for(queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+            if chunk is None:
+                break
+            yield chunk
+        await task
+        if "ok" in result_holder:
+            res = result_holder["ok"]
+            res.setdefault("sources_detail", res.get("providers_detail"))
+            yield f"data: {json.dumps({'type': 'done', 'payload': res}, ensure_ascii=False)}\n\n"
+        else:
+            msg = result_holder.get("error", "unknown error")
+            yield f"data: {json.dumps({'type': 'error', 'payload': {'message': msg}}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/trace")
+async def trace_ui():
+    """trace 디버그 UI — frontend/trace.html 서빙."""
+    trace_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "trace.html")
+    )
+    return FileResponse(trace_path, media_type="text/html")
+
+
+@app.get("/ui")
+async def main_ui():
+    """메인 UI — frontend/index.html 서빙."""
+    ui_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
+    )
+    return FileResponse(ui_path, media_type="text/html")
 
 
 if __name__ == "__main__":

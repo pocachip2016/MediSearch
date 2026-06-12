@@ -1,11 +1,9 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] **ui-2 · SSE 엔드포인트 + /trace 서빙** — `/api/movies/{evaluate,enrich}/stream` (asyncio.Queue), `/trace` FileResponse, headless 쿼리 파싱
-- [ ] **ui-3 · 프론트 단일 페이지** — `frontend/index.html` 폼·타임라인·EventSource·JSON viewer, 브라우저 실행 확인
+- [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
 
 ## Next
-- [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
 - [ ] Scrapy 통합 검토
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
 - [ ] enrich + evaluate 결합 플래그 (provider 검색 1회 공유)
@@ -17,6 +15,9 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] SSE 스트림 엔드포인트 (POST /api/movies/{evaluate,enrich}/stream) + 프론트 UI (GET /trace, GET /ui)
+- [x] **ui-2 · SSE 엔드포인트 + /trace 서빙** — `/api/movies/{evaluate,enrich}/stream` (asyncio.Queue), `/trace` FileResponse, headless 쿼리 파싱
+- [x] **ui-3 · 프론트 단일 페이지** — `frontend/index.html` 폼·타임라인·EventSource·JSON viewer, 브라우저 실행 확인
 - [x] 메타 보강 파이프라인 (POST /api/movies/enrich) — 하이브리드 추출(구조화 provider 직접, 텍스트 LLM), trust 가중 병합, story 30자 재작성, MovieMeta 저장
 - [x] docker-compose mediaX DB 연결 (host.docker.internal + 60s retry, _init_failed 제거)
 - [x] PlaywrightProvider 동음이의어 자동 서브페이지 탐색 (_DISAMBIG_JS + URL 큐 방식)

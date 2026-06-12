@@ -70,6 +70,9 @@ case "$1" in
   trace-api)
     $PYTEST tests/test_trace_api.py -v -k "not integration"
     ;;
+  ui-3)
+    $PYTEST tests/test_trace_api.py -v -k "not integration"
+    ;;
   all)
     $PYTEST tests/ -v
     ;;
