@@ -12,6 +12,9 @@ venv/
 *.db
 *.sqlite3
 
+# Runtime state
+backend/omdb_quota.json
+
 # OS
 .DS_Store
 

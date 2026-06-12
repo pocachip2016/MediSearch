@@ -3,6 +3,7 @@
 ## Now
 
 ## Next
+- [ ] OMDb provider 실동작 검증 (키 교체 후 첫 실제 요청 테스트)
 - [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
 - [ ] Scrapy 통합 검토
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
