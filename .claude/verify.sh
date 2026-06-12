@@ -5,6 +5,7 @@ set -e
 cd "$(dirname "$0")/../backend"
 
 PYTEST=/home/ktalpha/Work/venv/bin/pytest
+PYTHON=/home/ktalpha/Work/venv/bin/python
 
 case "$1" in
   step1)
@@ -158,6 +159,59 @@ print(f'  ✓ ms_* 테이블 {len(ms_tables)}개 생성됨')
     # 3. CLAUDE.md 저작권 원칙 확인
     [ -f ../CLAUDE.md ] && grep -q "저작권" ../CLAUDE.md || { echo "FAIL: CLAUDE.md에 저작권 원칙 미기재"; exit 1; }
     echo "  ✓ CLAUDE.md 저작권 원칙 기재"
+    echo "=== PASS ==="
+    ;;
+  D2|include-meta)
+    echo "=== D2: include_meta 결합 플래그 검증 ==="
+    # 1. MultiSourceRunner 시그니처 확인
+    $PYTEST tests/test_multi_runner.py::test_include_meta_returns_metadata \
+            tests/test_multi_runner.py::test_include_meta_false_no_metadata_key \
+            tests/test_multi_runner.py::test_include_meta_cache_hit_with_meta_cache \
+            -v --tb=short 2>&1
+    STATUS=$?
+    [ $STATUS -ne 0 ] && exit 1
+
+    # 2. MovieEvaluateRequest / Response 필드 확인 (grep — DB 연결 불필요)
+    grep -q "include_meta" main.py || { echo "FAIL: include_meta 필드 없음 (main.py)"; exit 1; }
+    grep -q "metadata.*dict.*None\|metadata:.*Optional" main.py || { echo "FAIL: MovieEvaluateResponse.metadata 없음"; exit 1; }
+    grep -q "meta_id.*int.*None" main.py || { echo "FAIL: MovieEvaluateResponse.meta_id 없음"; exit 1; }
+    echo "  ✓ MovieEvaluateRequest.include_meta 존재"
+    echo "  ✓ MovieEvaluateResponse.metadata, meta_id 존재"
+    echo "=== PASS ==="
+    ;;
+  D3|tmdb-movie-meta)
+    echo "=== D3: mediaX tmdb_movie_meta 테이블 + copyright guard 검증 ==="
+    MEDIAX_BACKEND=/home/ktalpha/Work/mediaX/backend
+
+    # 1. TmdbMovieMeta 모델 존재
+    grep -q "class TmdbMovieMeta" "$MEDIAX_BACKEND/api/programming/metadata/models/tmdb_cache.py" \
+      || { echo "FAIL: TmdbMovieMeta 모델 없음"; exit 1; }
+    echo "  ✓ TmdbMovieMeta 모델 존재"
+
+    # 2. 마이그레이션 파일 존재
+    [ -f "$MEDIAX_BACKEND/alembic/versions/0053_tmdb_movie_meta.py" ] \
+      || { echo "FAIL: 0053_tmdb_movie_meta.py 마이그레이션 없음"; exit 1; }
+    echo "  ✓ 0053 마이그레이션 존재"
+
+    # 3. copyright guard 상수 및 함수 존재
+    grep -q "_COPYRIGHT_STRIP_FIELDS" "$MEDIAX_BACKEND/workers/tasks/facet_tasks.py" \
+      || { echo "FAIL: _COPYRIGHT_STRIP_FIELDS 없음"; exit 1; }
+    grep -q "_apply_copyright_guard" "$MEDIAX_BACKEND/workers/tasks/facet_tasks.py" \
+      || { echo "FAIL: _apply_copyright_guard 없음"; exit 1; }
+    grep -q "story" "$MEDIAX_BACKEND/workers/tasks/facet_tasks.py" \
+      || { echo "FAIL: story 필드 가드 미확인"; exit 1; }
+    echo "  ✓ copyright guard (_COPYRIGHT_STRIP_FIELDS + _apply_copyright_guard) 존재"
+
+    # 4. include_meta=True 페이로드 확인
+    grep -q '"include_meta": True\|include_meta.*True' "$MEDIAX_BACKEND/workers/tasks/facet_tasks.py" \
+      || { echo "FAIL: include_meta=True payload 없음"; exit 1; }
+    echo "  ✓ evaluate payload include_meta=True 존재"
+
+    # 5. _upsert_tmdb_meta 함수 존재
+    grep -q "_upsert_tmdb_meta" "$MEDIAX_BACKEND/workers/tasks/facet_tasks.py" \
+      || { echo "FAIL: _upsert_tmdb_meta 없음"; exit 1; }
+    echo "  ✓ _upsert_tmdb_meta 헬퍼 존재"
+
     echo "=== PASS ==="
     ;;
   all)

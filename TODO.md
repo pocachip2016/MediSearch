@@ -2,7 +2,7 @@
 
 ## Now
 - [x] **D1** MediSearch postgres 재빌드 (`docker compose build --no-cache`) — SQLite→postgres 통일 (`plans/dev-backfill-db-unify/`)
-- [ ] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True) (`plans/dev-backfill-db-unify/`)
+- [x] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True) (`plans/dev-backfill-db-unify/`)
 
 > **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.
 > mediaX 가 tmdb_cache 순회 + MediSearch `/api/movies/{evaluate,enrich}` HTTP 호출.
@@ -11,8 +11,7 @@
 ## Next
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
-- [ ] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True) (`plans/dev-backfill-db-unify/`)
-- [ ] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard (`facet_tasks.py`) (`plans/dev-backfill-db-unify/`)
+- [x] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard (`facet_tasks.py`) (`plans/dev-backfill-db-unify/`)
 
 ## Later
 - [ ] QuotaManager 구현

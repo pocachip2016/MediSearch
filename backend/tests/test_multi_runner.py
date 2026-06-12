@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.orm import Session
 
-from models import MovieFacet, SearchSource
+from models import MovieFacet, MovieMeta, SearchSource
 from pipeline.evaluator import EvaluationEngine
+from pipeline.metadata_extractor import MetadataExtractionEngine
 from pipeline.multi_runner import MultiSourceRunner
 from search.base import SearchProvider, SourceDocument, SourceType
 from search.provider_factory import build_providers
@@ -340,3 +341,92 @@ async def test_force_refresh_skips_cache(mock_db):
     result = await runner.run("기생충", force_refresh=True)
 
     assert result.get("cached", False) is False
+
+
+# ── include_meta 결합 플래그 테스트 ──────────────────────────────────────────
+
+def _make_structured_doc(provider_name="tmdb"):
+    doc = MagicMock(spec=SourceDocument)
+    doc.url = f"https://{provider_name}.example/1"
+    doc.title = "기생충"
+    doc.source_domain = provider_name
+    doc.source_type = SourceType.synopsis
+    doc.trust_score = 0.95
+    doc.meta = {
+        "content_type": "movie",
+        "production_year": 2019,
+        "genres": ["드라마", "스릴러"],
+        "directors": ["봉준호"],
+        "cast": [],
+        "countries": ["한국"],
+        "original_title": "Parasite",
+    }
+    doc.text = ""
+    return doc
+
+
+@pytest.mark.asyncio
+async def test_include_meta_returns_metadata(mock_db):
+    """include_meta=True → result에 metadata/meta_id 키 포함."""
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "tmdb"
+    p.search = AsyncMock(return_value=[_make_structured_doc()])
+    ev = MagicMock(spec=EvaluationEngine)
+    ev.evaluate = AsyncMock(return_value={"primary_genre": "드라마", "tension": 0.7, "_coverage": {}, "confidence": 0.6})
+
+    extractor = MagicMock(spec=MetadataExtractionEngine)
+
+    meta_counter = [0]
+
+    def add_side_effect(obj):
+        if isinstance(obj, MovieFacet):
+            obj.id = 1
+        elif isinstance(obj, MovieMeta):
+            meta_counter[0] += 1
+            obj.id = meta_counter[0]
+
+    mock_db.add.side_effect = add_side_effect
+
+    runner = MultiSourceRunner([p], ev, mock_db, extractor=extractor)
+    result = await runner.run("기생충", include_meta=True)
+
+    assert "metadata" in result
+    assert "meta_id" in result
+    assert isinstance(result["metadata"], dict)
+
+
+@pytest.mark.asyncio
+async def test_include_meta_false_no_metadata_key(mock_db):
+    """include_meta=False(기본) → metadata 키 없음."""
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "tmdb"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충")
+
+    assert "metadata" not in result
+
+
+@pytest.mark.asyncio
+async def test_include_meta_cache_hit_with_meta_cache(mock_db):
+    """facet 캐시 히트 + meta 캐시 히트 → metadata 즉시 반환."""
+    fresh_facet = _make_fresh_facet()
+    fresh_meta = MagicMock(spec=MovieMeta)
+    fresh_meta.id = 99
+    fresh_meta.meta_json = {"content_type": "movie", "production_year": 2019, "_coverage": {}}
+
+    # first() 호출 순서: facet 캐시 → meta 캐시
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.side_effect = [
+        fresh_facet, fresh_meta
+    ]
+
+    ev = MagicMock(spec=EvaluationEngine)
+    extractor = MagicMock(spec=MetadataExtractionEngine)
+    runner = MultiSourceRunner([], ev, mock_db, extractor=extractor)
+    result = await runner.run("기생충", include_meta=True)
+
+    assert result["cached"] is True
+    assert result["metadata"] == fresh_meta.meta_json
+    assert result["meta_id"] == 99

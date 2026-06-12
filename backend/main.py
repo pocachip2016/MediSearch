@@ -77,6 +77,7 @@ class MovieEvaluateRequest(BaseModel):
     require_web: bool = False   # True: 나무위키/영문위키 둘 다 없으면 Ollama 평가 생략
     force_refresh: bool = False  # True: 캐시 무시하고 파이프라인 재실행
     backfill: bool = False      # True: BACKFILL_PROVIDERS(playwright 포함) 트랙 — 배치 백필 전용
+    include_meta: bool = False  # True: facet + 기본 메타 결합 반환 (추가 검색 없음)
 
     @model_validator(mode="after")
     def require_title_or_query(self) -> "MovieEvaluateRequest":
@@ -114,6 +115,8 @@ class MovieEvaluateResponse(BaseModel):
     skipped_reason: str | None = None  # "no_web": 웹 소스 없어 평가 생략
     sources_detail: list[dict] | None = None
     cached: bool = False
+    metadata: dict | None = None   # include_meta=True 시 기본 메타 결합
+    meta_id: int | None = None
 
 
 class MovieEnrichRequest(BaseModel):
@@ -213,6 +216,7 @@ async def evaluate_movie(
 ):
     """영화 평가 파이프라인 실행: search → evaluate → save."""
     evaluator = EvaluationEngine()
+    extractor = MetadataExtractionEngine() if req.include_meta else None
 
     provider_names = (
         _get_backfill_provider_names() if req.backfill
@@ -220,7 +224,7 @@ async def evaluate_movie(
     )
     if provider_names:
         providers = build_providers(provider_names)
-        runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db)
+        runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db, extractor=extractor)
     else:
         if settings.SEARCH_PROVIDER == "playwright":
             search_provider = NamuHttpProvider(timeout_s=15.0)
@@ -232,7 +236,12 @@ async def evaluate_movie(
 
     try:
         async with eval_gate:
-            result = await runner.run(sq, require_namu=req.need_web, force_refresh=req.force_refresh)
+            result = await runner.run(
+                sq,
+                require_namu=req.need_web,
+                force_refresh=req.force_refresh,
+                include_meta=req.include_meta,
+            )
     except EvalBusyError:
         from fastapi import HTTPException
         raise HTTPException(
@@ -240,12 +249,14 @@ async def evaluate_movie(
             detail="Evaluation queue timeout — server busy",
         )
 
-    result_without_dupes = {k: v for k, v in result.items() if k not in ("cached", "sources_detail", "content_id")}
+    result_without_dupes = {k: v for k, v in result.items() if k not in ("cached", "sources_detail", "content_id", "metadata", "meta_id")}
     return MovieEvaluateResponse(
         **result_without_dupes,
         content_id=req.content_id,
         sources_detail=result.get("providers_detail") or result.get("sources_detail"),
         cached=result.get("cached", False),
+        metadata=result.get("metadata"),
+        meta_id=result.get("meta_id"),
     )
 
 

@@ -13,12 +13,16 @@
     {
       "id": "D2",
       "name": "include-meta-combined-flag",
-      "status": "pending"
+      "status": "completed",
+      "summary": "MultiSourceRunner.run(include_meta=True) — Phase 1 docs 재사용 메타 추출 + extractor 주입 + MovieEvaluateRequest/Response 필드 추가 + 테스트 3개 pass",
+      "completed_at": "2026-06-13T00:00:00+09:00"
     },
     {
       "id": "D3",
       "name": "mediax-tmdb-movie-meta",
-      "status": "pending"
+      "status": "completed",
+      "summary": "tmdb_movie_meta 테이블(0053) + TmdbMovieMeta 모델 + _apply_copyright_guard(story 제거) + include_meta=True 페이로드 + _upsert_tmdb_meta",
+      "completed_at": "2026-06-13T00:00:00+09:00"
     }
   ]
 }
