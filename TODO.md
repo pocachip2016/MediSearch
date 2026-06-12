@@ -1,9 +1,10 @@
 # MediSearch — TODO
 
 ## Now
+- [ ] **ui-2 · SSE 엔드포인트 + /trace 서빙** — `/api/movies/{evaluate,enrich}/stream` (asyncio.Queue), `/trace` FileResponse, headless 쿼리 파싱
+- [ ] **ui-3 · 프론트 단일 페이지** — `frontend/index.html` 폼·타임라인·EventSource·JSON viewer, 브라우저 실행 확인
 
 ## Next
-- [ ] OMDb provider 실동작 검증 (키 교체 후 첫 실제 요청 테스트)
 - [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
 - [ ] Scrapy 통합 검토
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)

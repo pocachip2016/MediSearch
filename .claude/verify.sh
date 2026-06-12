@@ -64,6 +64,12 @@ case "$1" in
   meta-step6)
     $PYTEST tests/test_api.py tests/ -v -k "not integration"
     ;;
+  trace-backend)
+    $PYTEST tests/test_multi_runner.py tests/test_metadata_runner.py -v -k "not integration"
+    ;;
+  trace-api)
+    $PYTEST tests/test_trace_api.py -v -k "not integration"
+    ;;
   all)
     $PYTEST tests/ -v
     ;;

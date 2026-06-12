@@ -41,10 +41,16 @@ logger = logging.getLogger(__name__)
 # DB 초기화
 init_db()
 
-# Ollama 평가 직렬화 게이트
+# Ollama 평가 직렬화 게이트 (배치 evaluate 전용)
 eval_gate = EvalGate(
     max_concurrent=settings.MAX_CONCURRENT_EVALS,
     queue_timeout_s=settings.EVAL_QUEUE_TIMEOUT_S,
+)
+
+# 대화형 enrich 전용 게이트 — 배치 evaluate와 분리하여 블로킹 방지
+enrich_gate = EvalGate(
+    max_concurrent=1,
+    queue_timeout_s=90,
 )
 
 # ── 요청/응답 모델 ────────────────────────────────────────
@@ -115,6 +121,7 @@ class MovieEnrichRequest(BaseModel):
     content_id: int | None = None
     content_type: str | None = None  # "movie"|"series" 힌트
     require_web: bool = False
+    fast: bool = False  # True: 구조화 provider(tmdb/kmdb/omdb)만 사용, LLM 0회, ~1.5s
 
     @model_validator(mode="after")
     def require_title_or_query(self) -> "MovieEnrichRequest":
@@ -225,7 +232,10 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
     직접 추출, 텍스트 provider(namu/wiki/kowiki)는 Ollama 추출.
     """
     provider_names_str = settings.SEARCH_PROVIDERS or settings.SEARCH_PROVIDER
-    provider_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    all_names = [p.strip() for p in provider_names_str.split(",") if p.strip()]
+    # fast=True: 구조화(로컬DB+외부구조화) provider만 — LLM 0회, ~1.5s
+    _STRUCTURED = {"tmdb", "kmdb", "omdb"}
+    provider_names = [n for n in all_names if n in _STRUCTURED] if req.fast else all_names
     providers = build_providers(provider_names)
 
     extractor = MetadataExtractionEngine()
@@ -234,7 +244,7 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
     sq = req.to_search_query()
 
     try:
-        async with eval_gate:
+        async with enrich_gate:
             result = await runner.run(sq, require_web=req.require_web)
     except EvalBusyError:
         raise HTTPException(
