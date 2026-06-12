@@ -76,6 +76,7 @@ class MovieEvaluateRequest(BaseModel):
     require_namu: bool = False  # (레거시 alias) 웹 소스 없으면 평가 생략
     require_web: bool = False   # True: 나무위키/영문위키 둘 다 없으면 Ollama 평가 생략
     force_refresh: bool = False  # True: 캐시 무시하고 파이프라인 재실행
+    backfill: bool = False      # True: BACKFILL_PROVIDERS(playwright 포함) 트랙 — 배치 백필 전용
 
     @model_validator(mode="after")
     def require_title_or_query(self) -> "MovieEvaluateRequest":
@@ -199,6 +200,12 @@ def _get_interactive_provider_names() -> list[str]:
     return [p.strip() for p in names_str.split(",") if p.strip()]
 
 
+def _get_backfill_provider_names() -> list[str]:
+    """백필 트랙 provider 목록 — BACKFILL_PROVIDERS 우선, 폴백은 SEARCH_PROVIDERS."""
+    names_str = settings.BACKFILL_PROVIDERS or settings.SEARCH_PROVIDERS
+    return [p.strip() for p in names_str.split(",") if p.strip()]
+
+
 @app.post("/api/movies/evaluate")
 async def evaluate_movie(
     req: MovieEvaluateRequest,
@@ -207,7 +214,10 @@ async def evaluate_movie(
     """영화 평가 파이프라인 실행: search → evaluate → save."""
     evaluator = EvaluationEngine()
 
-    provider_names = _get_interactive_provider_names()
+    provider_names = (
+        _get_backfill_provider_names() if req.backfill
+        else _get_interactive_provider_names()
+    )
     if provider_names:
         providers = build_providers(provider_names)
         runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db)
@@ -230,8 +240,9 @@ async def evaluate_movie(
             detail="Evaluation queue timeout — server busy",
         )
 
+    result_without_dupes = {k: v for k, v in result.items() if k not in ("cached", "sources_detail", "content_id")}
     return MovieEvaluateResponse(
-        **result,
+        **result_without_dupes,
         content_id=req.content_id,
         sources_detail=result.get("providers_detail") or result.get("sources_detail"),
         cached=result.get("cached", False),

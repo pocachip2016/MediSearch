@@ -1,7 +1,11 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] facet-backfill (namu+Ollama 배치 워커, tmdb_cache 순회 모드)
+- [ ] (없음 — 다음 작업은 Next 에서 선택)
+
+> **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.
+> mediaX 가 tmdb_cache 순회 + MediSearch `/api/movies/{evaluate,enrich}` HTTP 호출.
+> MediSearch 는 WebSearch/facet 생성 서비스로 유지 (backfill 워커 미보유).
 
 ## Next
 - [ ] playwright-pool (브라우저 풀, domcontentloaded, 리소스 차단)

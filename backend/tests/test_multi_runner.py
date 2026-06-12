@@ -78,6 +78,46 @@ def test_build_providers_empty():
     assert build_providers([]) == []
 
 
+# ── provider track separation ────────────────────────────────
+
+def test_interactive_providers_excludes_playwright(monkeypatch):
+    """INTERACTIVE_PROVIDERS는 playwright를 포함하지 않아야 한다."""
+    monkeypatch.setattr("shared.config.settings.INTERACTIVE_PROVIDERS", "tmdb,kmdb,omdb,wikipedia,kowiki")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "")
+    from main import _get_interactive_provider_names
+    names = _get_interactive_provider_names()
+    assert "playwright" not in names
+    assert "tmdb" in names
+
+
+def test_backfill_providers_includes_playwright(monkeypatch):
+    """BACKFILL_PROVIDERS는 playwright를 포함해야 한다."""
+    monkeypatch.setattr("shared.config.settings.BACKFILL_PROVIDERS", "tmdb,kmdb,playwright,wikipedia,kowiki,omdb")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "")
+    from main import _get_backfill_provider_names
+    names = _get_backfill_provider_names()
+    assert "playwright" in names
+    assert "tmdb" in names
+
+
+def test_backfill_fallback_to_search_providers(monkeypatch):
+    """BACKFILL_PROVIDERS 비어있으면 SEARCH_PROVIDERS 폴백."""
+    monkeypatch.setattr("shared.config.settings.BACKFILL_PROVIDERS", "")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "fixture,playwright")
+    from main import _get_backfill_provider_names
+    names = _get_backfill_provider_names()
+    assert names == ["fixture", "playwright"]
+
+
+def test_interactive_fallback_to_search_providers(monkeypatch):
+    """INTERACTIVE_PROVIDERS 비어있으면 SEARCH_PROVIDERS 폴백."""
+    monkeypatch.setattr("shared.config.settings.INTERACTIVE_PROVIDERS", "")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "fixture,tmdb")
+    from main import _get_interactive_provider_names
+    names = _get_interactive_provider_names()
+    assert names == ["fixture", "tmdb"]
+
+
 # ── MultiSourceRunner ────────────────────────────────────────
 
 @pytest.mark.asyncio
