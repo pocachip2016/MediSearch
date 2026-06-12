@@ -1,0 +1,22 @@
+{
+  "task": "dev-backfill-db-unify",
+  "title": "Backfill DB 통일 + 기본메타 테이블 + 저작권 가드",
+  "created": "2026-06-13",
+  "steps": [
+    {
+      "id": "D1",
+      "name": "medisearch-postgres-rebuild",
+      "status": "pending"
+    },
+    {
+      "id": "D2",
+      "name": "include-meta-combined-flag",
+      "status": "pending"
+    },
+    {
+      "id": "D3",
+      "name": "mediax-tmdb-movie-meta",
+      "status": "pending"
+    }
+  ]
+}

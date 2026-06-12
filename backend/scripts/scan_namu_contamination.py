@@ -128,11 +128,13 @@ def apply_reset(ms_url: str, mx_url: str | None, affected: set[str], dry_run: bo
 def main():
     parser = argparse.ArgumentParser(description="나무위키 오염 소스 스캔 + 재평가 리셋")
     parser.add_argument("--apply", action="store_true", help="삭제 실행 (기본: dry-run)")
+    parser.add_argument("--db-url", default=None, help="MediSearch DB URL (기본: settings)")
+    parser.add_argument("--mx-url", default=None, help="mediaX DB URL (기본: settings)")
     args = parser.parse_args()
     dry_run = not args.apply
 
-    ms_url = settings.DATABASE_URL
-    mx_url = getattr(settings, "MEDIAX_DATABASE_URL", None)
+    ms_url = args.db_url or settings.DATABASE_URL
+    mx_url = args.mx_url or getattr(settings, "MEDIAX_DATABASE_URL", None)
 
     print(f"[scan] MediSearch DB: {ms_url}")
     print(f"[scan] mediaX DB:     {mx_url or '미설정 — 건너뜀'}")

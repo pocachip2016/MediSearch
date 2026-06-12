@@ -1,8 +1,7 @@
 # MediSearch — TODO
 
 ## Now
-- [x] **N2** DDG 검색 폴백 `_resolve_via_search` — 동음이의 자동 해소 (`plans/dev-namu-precision/step2.md`)
-- [ ] **N3** 과거 오염 스캔 스크립트 `scan_namu_contamination.py` + dry-run 검토 (`plans/dev-namu-precision/step3.md`)
+- [ ] **D1** MediSearch postgres 재빌드 (`docker compose build --no-cache`) — SQLite→postgres 통일 (`plans/dev-backfill-db-unify/`)
 
 > **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.
 > mediaX 가 tmdb_cache 순회 + MediSearch `/api/movies/{evaluate,enrich}` HTTP 호출.
@@ -11,7 +10,8 @@
 ## Next
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
-- [ ] enrich + evaluate 결합 플래그 (provider 검색 1회 공유)
+- [ ] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True) (`plans/dev-backfill-db-unify/`)
+- [ ] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard (`facet_tasks.py`) (`plans/dev-backfill-db-unify/`)
 
 ## Later
 - [ ] QuotaManager 구현
@@ -32,6 +32,8 @@
 - [x] no_namu → no_web 로직 확장 (playwright/wikipedia/kowiki/omdb 웹 소스 통합)
 - [x] API 응답 sources_detail 추가 (provider별 docs_count/trust/confidence/evaluated)
 - [x] 멀티소스 앙상블 기반 구축 (TMDB/KMDb provider + trust 가중 facet 병합 엔진, Step A+B)
+- [x] **N3** 오염 스캔 스크립트 `scan_namu_contamination.py` (dry-run + `--apply`)
+- [x] **N2** DDG 검색 폴백 `_resolve_via_search` — 동음이의 자동 해소, 연도 스코어링
 - [x] **N1** httpx+bs4 NamuHttpProvider 신규, playwright 전면 제거, 제목 검증 게이트, 테스트 10/10
 - [x] Playwright 실제 크롤링 검증 (Namu.Wiki /search 차단 확인 → 직접 URL 방식으로 전환, integration 테스트 8/8)
 - [x] 데이터 파이프라인 & DB 스키마 설계 (SearchSource/MovieFacet, SQLite, 원본 미저장 원칙)
