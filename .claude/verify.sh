@@ -88,6 +88,9 @@ case "$1" in
   step4-test-isolation)
     $PYTEST tests/ -q --tb=short -k "not integration"
     ;;
+  derived-cache)
+    $PYTEST tests/test_multi_runner.py tests/test_metadata_runner.py tests/test_api.py -q --tb=short -k "not integration"
+    ;;
   all)
     $PYTEST tests/ -q --tb=short
     ;;

@@ -1,5 +1,6 @@
 """tests/test_metadata_runner.py — MetadataRunner 단위 테스트."""
 import pytest
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 from sqlalchemy.orm import Session
@@ -23,6 +24,8 @@ def mock_db():
             obj.id = meta_counter[0]
 
     db.add.side_effect = add_side_effect
+    # 기본 캐시 미스 — 캐시 히트 테스트에서는 개별 override
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
     return db
 
 
@@ -264,3 +267,62 @@ async def test_providers_detail_includes_structured_flag(mock_db):
     assert detail["provider"] == "tmdb"
     assert detail["structured"] is True
     assert detail["evaluated"] is False
+
+
+# ── derived-cache 테스트 ──────────────────────────────────────────────────────
+
+def _make_fresh_meta(tmdb_id=96316, movie_query="기생충"):
+    row = MagicMock(spec=MovieMeta)
+    row.id = 99
+    row.tmdb_id = tmdb_id
+    row.movie_query = movie_query
+    row.meta_json = {"content_type": "movie", "production_year": 2019, "genres": ["드라마"]}
+    row.source_count = 2
+    row.created_at = datetime.utcnow() - timedelta(days=1)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_returns_cached_meta(mock_db):
+    """DB에 fresh meta → 파이프라인 스킵, cached=True 반환."""
+    fresh = _make_fresh_meta()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    ext = MagicMock(spec=MetadataExtractionEngine)
+    runner = MetadataRunner([], ext, mock_db)
+    result = await runner.run("기생충", force_refresh=False)
+
+    assert result["cached"] is True
+    assert result["meta_id"] == 99
+    ext.extract.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_runs_pipeline(mock_db):
+    """캐시 미스(None) → 파이프라인 실행."""
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ext = MagicMock(spec=MetadataExtractionEngine)
+    runner = MetadataRunner([p], ext, mock_db)
+    result = await runner.run("기생충")
+
+    assert result.get("cached", False) is False
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_skips_cache(mock_db):
+    """force_refresh=True → fresh 캐시 있어도 파이프라인 실행."""
+    fresh = _make_fresh_meta()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ext = MagicMock(spec=MetadataExtractionEngine)
+    runner = MetadataRunner([p], ext, mock_db)
+    result = await runner.run("기생충", force_refresh=True)
+
+    assert result.get("cached", False) is False

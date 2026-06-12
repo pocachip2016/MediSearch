@@ -1,5 +1,6 @@
 """tests/test_multi_runner.py — MultiSourceRunner + provider_factory 테스트."""
 import asyncio
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,6 +26,8 @@ def mock_db():
             obj.id = facet_counter[0]
 
     db.add.side_effect = add_side_effect
+    # 기본 캐시 미스 — 캐시 히트 테스트에서는 개별 override
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
     return db
 
 
@@ -238,3 +241,62 @@ async def test_multi_runner_trust_weighted(mock_db):
     merged_tension = result["facet"].get("tension")
     if merged_tension is not None:
         assert merged_tension > 0.5
+
+
+# ── derived-cache 테스트 ──────────────────────────────────────────────────────
+
+def _make_fresh_facet(tmdb_id=96316, movie_query="기생충"):
+    row = MagicMock(spec=MovieFacet)
+    row.id = 42
+    row.tmdb_id = tmdb_id
+    row.movie_query = movie_query
+    row.facet_json = {"primary_genre": "드라마", "tension": 0.8, "_coverage": {}}
+    row.source_count = 3
+    row.created_at = datetime.utcnow() - timedelta(days=1)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_returns_cached_facet(mock_db):
+    """DB에 fresh facet → 파이프라인 스킵, cached=True 반환."""
+    fresh = _make_fresh_facet()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([], ev, mock_db)
+    result = await runner.run("기생충", force_refresh=False)
+
+    assert result["cached"] is True
+    assert result["facet_id"] == 42
+    ev.evaluate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_runs_pipeline(mock_db):
+    """캐시 미스(None) → 파이프라인 실행."""
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충")
+
+    assert result.get("cached", False) is False
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_skips_cache(mock_db):
+    """force_refresh=True → fresh 캐시 있어도 파이프라인 실행."""
+    fresh = _make_fresh_facet()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충", force_refresh=True)
+
+    assert result.get("cached", False) is False

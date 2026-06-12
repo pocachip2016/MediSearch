@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -42,14 +43,37 @@ class MultiSourceRunner:
         self.evaluator = evaluator
         self.db = db
 
+    def _lookup_cache_facet(self, sq: SearchQuery) -> "MovieFacet | None":
+        if self.db is None:
+            return None
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        q = self.db.query(MovieFacet).filter(MovieFacet.created_at >= cutoff)
+        if sq.tmdb_id:
+            return q.filter(MovieFacet.tmdb_id == sq.tmdb_id).order_by(MovieFacet.created_at.desc()).first()
+        return q.filter(MovieFacet.movie_query == sq.title).order_by(MovieFacet.created_at.desc()).first()
+
     async def run(
         self,
         query: str | SearchQuery,
         require_namu: bool = False,
         on_event: EventCallback = None,
         persist: bool = True,
+        force_refresh: bool = False,
     ) -> dict:
         sq = SearchQuery.from_text(query) if isinstance(query, str) else query
+
+        if not force_refresh:
+            row = self._lookup_cache_facet(sq)
+            if row is not None:
+                logger.info(f"[multi] {sq.title!r} — 캐시 히트 (facet_id={row.id})")
+                return {
+                    "movie_query": sq.title,
+                    "facet": row.facet_json,
+                    "source_count": row.source_count,
+                    "facet_id": row.id,
+                    "cached": True,
+                    "providers_detail": [],
+                }
 
         await emit(on_event, "search_start", {
             "providers": [p.provider_name for p in self.providers],

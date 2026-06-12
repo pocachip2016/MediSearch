@@ -75,6 +75,7 @@ class MovieEvaluateRequest(BaseModel):
     content_id: int | None = None  # mediaX 콘텐츠 ID — 응답에 echo
     require_namu: bool = False  # (레거시 alias) 웹 소스 없으면 평가 생략
     require_web: bool = False   # True: 나무위키/영문위키 둘 다 없으면 Ollama 평가 생략
+    force_refresh: bool = False  # True: 캐시 무시하고 파이프라인 재실행
 
     @model_validator(mode="after")
     def require_title_or_query(self) -> "MovieEvaluateRequest":
@@ -110,7 +111,8 @@ class MovieEvaluateResponse(BaseModel):
     content_id: int | None = None
     error: str | None = None
     skipped_reason: str | None = None  # "no_web": 웹 소스 없어 평가 생략
-    sources_detail: list[dict] | None = None  # provider별 {provider, docs_count, trust, confidence, evaluated}
+    sources_detail: list[dict] | None = None
+    cached: bool = False
 
 
 class MovieEnrichRequest(BaseModel):
@@ -126,6 +128,7 @@ class MovieEnrichRequest(BaseModel):
     content_id: int | None = None
     content_type: str | None = None  # "movie"|"series" 힌트
     require_web: bool = False
+    force_refresh: bool = False  # True: 캐시 무시하고 파이프라인 재실행
     fast: bool = False  # True: 구조화 provider(tmdb/kmdb/omdb)만 사용, LLM 0회, ~1.5s
 
     @model_validator(mode="after")
@@ -158,6 +161,7 @@ class MovieEnrichResponse(BaseModel):
     error: str | None = None
     skipped_reason: str | None = None
     sources_detail: list[dict] | None = None
+    cached: bool = False
 
 
 # ── 라우트 ────────────────────────────────────────────────
@@ -218,7 +222,7 @@ async def evaluate_movie(
 
     try:
         async with eval_gate:
-            result = await runner.run(sq, require_namu=req.need_web)
+            result = await runner.run(sq, require_namu=req.need_web, force_refresh=req.force_refresh)
     except EvalBusyError:
         from fastapi import HTTPException
         raise HTTPException(
@@ -229,7 +233,8 @@ async def evaluate_movie(
     return MovieEvaluateResponse(
         **result,
         content_id=req.content_id,
-        sources_detail=result.get("providers_detail")
+        sources_detail=result.get("providers_detail") or result.get("sources_detail"),
+        cached=result.get("cached", False),
     )
 
 
@@ -253,7 +258,7 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
 
     try:
         async with enrich_gate:
-            result = await runner.run(sq, require_web=req.require_web)
+            result = await runner.run(sq, require_web=req.require_web, force_refresh=req.force_refresh)
     except EvalBusyError:
         raise HTTPException(
             status_code=429,
@@ -275,7 +280,8 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
         meta_id=result.get("meta_id"),
         content_id=req.content_id,
         skipped_reason=result.get("skipped_reason"),
-        sources_detail=result.get("providers_detail"),
+        sources_detail=result.get("providers_detail") or result.get("sources_detail"),
+        cached=result.get("cached", False),
     )
 
 
