@@ -91,6 +91,15 @@ case "$1" in
   derived-cache)
     $PYTEST tests/test_multi_runner.py tests/test_metadata_runner.py tests/test_api.py -q --tb=short -k "not integration"
     ;;
+  N1|namu-provider)
+    $PYTEST tests/test_namu_provider.py -q --tb=short
+    # playwright 파일 삭제 확인
+    [ -f search/playwright_provider.py ] && echo "FAIL: playwright_provider.py 아직 존재" && exit 1
+    [ -f tests/test_playwright_provider.py ] && echo "FAIL: test_playwright_provider.py 아직 존재" && exit 1
+    [ -f tests/test_playwright_integration.py ] && echo "FAIL: test_playwright_integration.py 아직 존재" && exit 1
+    grep -q "PlaywrightProvider" main.py && echo "FAIL: main.py에 PlaywrightProvider 잔류" && exit 1
+    echo "✓ playwright 파일 정리 완료"
+    ;;
   all)
     $PYTEST tests/ -q --tb=short
     ;;

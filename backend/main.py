@@ -15,7 +15,7 @@ from pipeline.metadata_runner import MetadataRunner
 from pipeline.multi_runner import MultiSourceRunner
 from pipeline.runner import PipelineRunner
 from search.fixture_provider import FixtureProvider
-from search.playwright_provider import PlaywrightProvider
+from search.namu_provider import NamuHttpProvider
 from search.provider_factory import build_providers
 from shared.database import init_db, get_db
 from shared.config import settings
@@ -223,7 +223,7 @@ async def evaluate_movie(
         runner: PipelineRunner | MultiSourceRunner = MultiSourceRunner(providers, evaluator, db)
     else:
         if settings.SEARCH_PROVIDER == "playwright":
-            search_provider = PlaywrightProvider(headless=True, timeout_ms=15000)
+            search_provider = NamuHttpProvider(timeout_s=15.0)
         else:
             search_provider = FixtureProvider()
         runner = PipelineRunner(search_provider, evaluator, db)
@@ -299,7 +299,6 @@ async def enrich_movie(req: MovieEnrichRequest, db=Depends(get_db)):
 @app.post("/api/movies/evaluate/stream")
 async def evaluate_movie_stream(
     req: MovieEvaluateRequest,
-    headless: bool = Query(True, description="playwright 브라우저 headless 모드"),
     db=Depends(get_db),
 ):
     """evaluate 파이프라인 SSE 스트림 — 단계별 이벤트를 text/event-stream으로 전송.
@@ -308,7 +307,7 @@ async def evaluate_movie_stream(
     최종 이벤트: type=done (payload=전체 결과) 또는 type=error (payload={"message":"..."})
     """
     provider_names = _get_interactive_provider_names() or [settings.SEARCH_PROVIDER]
-    providers = build_providers(provider_names, headless=headless)
+    providers = build_providers(provider_names)
     evaluator = EvaluationEngine()
     runner = MultiSourceRunner(providers, evaluator, db)
     sq = req.to_search_query()
@@ -361,14 +360,13 @@ async def evaluate_movie_stream(
 @app.post("/api/movies/enrich/stream")
 async def enrich_movie_stream(
     req: MovieEnrichRequest,
-    headless: bool = Query(True, description="playwright 브라우저 headless 모드"),
     db=Depends(get_db),
 ):
     """enrich 파이프라인 SSE 스트림 — 단계별 이벤트를 text/event-stream으로 전송."""
     all_names = _get_interactive_provider_names() or [settings.SEARCH_PROVIDER]
     _STRUCTURED = {"tmdb", "kmdb", "omdb"}
     provider_names = [n for n in all_names if n in _STRUCTURED] if req.fast else all_names
-    providers = build_providers(provider_names, headless=headless)
+    providers = build_providers(provider_names)
     extractor = MetadataExtractionEngine()
     runner = MetadataRunner(providers, extractor, db)
     sq = req.to_search_query()

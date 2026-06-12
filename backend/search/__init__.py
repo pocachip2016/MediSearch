@@ -8,16 +8,16 @@ def get_search_provider() -> SearchProvider:
     """환경 변수 기반 검색 제공자 반환.
 
     SEARCH_PROVIDER 환경변수:
-      - 'fixture': FixtureProvider (POC 기본)
-      - 'playwright': PlaywrightProvider (추후 구현)
+      - 'fixture': FixtureProvider (테스트/POC용)
+      - 'namu': NamuHttpProvider
     """
+    from search.namu_provider import NamuHttpProvider
     provider_type = getattr(settings, "SEARCH_PROVIDER", "fixture").lower()
 
     if provider_type == "fixture":
         return FixtureProvider()
-    elif provider_type == "playwright":
-        # 추후: from search.playwright_provider import PlaywrightProvider
-        raise NotImplementedError("Playwright provider coming soon")
+    elif provider_type in ("namu", "playwright"):
+        return NamuHttpProvider(timeout_s=15.0)
     else:
         raise ValueError(f"Unknown search provider: {provider_type}")
 

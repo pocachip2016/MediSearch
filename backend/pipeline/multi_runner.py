@@ -98,8 +98,11 @@ class MultiSourceRunner:
         ]
 
         # ── require_namu 조기 종료: 웹 소스(namu+wiki) 둘 다 없을 때만 생략 ─────
+        # "playwright"는 namu(httpx) 전환 이전 레거시 키 호환용
         web_has_docs = bool(
-            docs_by_provider.get("playwright") or docs_by_provider.get("wikipedia")
+            docs_by_provider.get("namu")
+            or docs_by_provider.get("playwright")
+            or docs_by_provider.get("wikipedia")
         )
         if require_namu and not web_has_docs:
             logger.info(f"[multi] {sq.title!r} — 웹 소스 없음, 조기 종료 (require_web)")

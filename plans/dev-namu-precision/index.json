@@ -1,0 +1,26 @@
+{
+  "project": "MediSearch",
+  "task": "dev-namu-precision",
+  "title": "나무위키 콘텐츠 정밀 확보 — playwright provider 재작업 (내비게이션/검증게이트/DDG폴백/오염정리)",
+  "branch": "fix/namu-precision",
+  "decision": "namu는 plain HTTP에 풀 SSR HTML 반환(실측 2026-06-13) → playwright 제거, httpx+bs4 결정적 파싱으로 교체. 직접 URL 먼저 + DDG HTML 검색 폴백(동음이의 해소 위임). 검증 게이트(h1↔query 제목 정규화 매칭) 통과 시에만 문서 채택 — 오염 차단 우선. 감상평은 namu '평가' 섹션에서 확보(외부 블로그 수집 배제). LLM digest 미채택 — 추출은 결정적 파싱, LLM은 facet 평가 단계만. 과거 오염은 ms_search_sources 제목 불일치 스캔→dry-run 승인→facet 삭제로 드레인 자동 재평가.",
+  "steps": [
+    {
+      "id": "N1",
+      "name": "namu-http-provider",
+      "status": "completed",
+      "summary": "httpx+bs4 NamuHttpProvider 신규 + playwright 전면 제거, 제목 검증 게이트 + 섹션 파싱, 테스트 10/10",
+      "completed_at": "2026-06-13T00:00:00+09:00"
+    },
+    {
+      "id": "N2",
+      "name": "ddg-search-fallback",
+      "status": "pending"
+    },
+    {
+      "id": "N3",
+      "name": "contamination-scan-reset",
+      "status": "pending"
+    }
+  ]
+}
