@@ -143,7 +143,7 @@ class MultiSourceRunner:
         })
 
         source_count = await self._save_sources(sq.title, all_docs, persist=persist)
-        facet_id = await self._save_facet(sq.title, merged, source_count, persist=persist)
+        facet_id = await self._save_facet(sq.title, merged, source_count, tmdb_id=sq.tmdb_id, persist=persist)
 
         return {
             "movie_query": sq.title,
@@ -194,7 +194,7 @@ class MultiSourceRunner:
         self.db.commit()
         return count
 
-    async def _save_facet(self, query: str, facet: dict, source_count: int, persist: bool = True) -> int | None:
+    async def _save_facet(self, query: str, facet: dict, source_count: int, tmdb_id: int | None = None, persist: bool = True) -> int | None:
         if not persist:
             return None
         try:
@@ -203,6 +203,7 @@ class MultiSourceRunner:
                 facet_json=facet,
                 llm_engine="ollama",
                 source_count=source_count,
+                tmdb_id=tmdb_id,
             )
             self.db.add(mf)
             self.db.commit()

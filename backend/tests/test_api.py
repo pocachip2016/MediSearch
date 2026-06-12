@@ -54,11 +54,12 @@ def test_root(client):
     assert "MediSearch API" in response.json()["message"]
 
 
-@patch("main.PipelineRunner")
+@patch("main.MultiSourceRunner")
 @patch("main.EvaluationEngine")
-@patch("main.FixtureProvider")
-def test_evaluate_movie_success(mock_provider_cls, mock_evaluator_cls, mock_runner_cls, client):
+@patch("main.build_providers")
+def test_evaluate_movie_success(mock_build, mock_evaluator_cls, mock_runner_cls, client):
     """POST /api/movies/evaluate 성공 케이스."""
+    mock_build.return_value = [MagicMock()]
     mock_runner = MagicMock()
     mock_runner.run = AsyncMock(return_value={
         "movie_query": "기생충",
@@ -85,6 +86,7 @@ def test_evaluate_movie_success(mock_provider_cls, mock_evaluator_cls, mock_runn
 @patch("main.settings")
 def test_evaluate_content_type_passed_to_search_query(mock_settings, mock_build, mock_evaluator_cls, mock_runner_cls, client):
     """content_type=series → SearchQuery.content_type 전달 확인."""
+    mock_settings.INTERACTIVE_PROVIDERS = ""
     mock_settings.SEARCH_PROVIDERS = "omdb"
     mock_settings.USE_FIXTURE = False
     mock_build.return_value = [MagicMock()]

@@ -1,10 +1,13 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] PostgreSQL 전환 (현재 SQLite POC → 프로덕션 DB)
+- [x] PostgreSQL 전환 → mediax-db-migration (ms_* 테이블 + tmdb_id 키)
 
 ## Next
-- [ ] Scrapy 통합 검토
+- [ ] derived-cache (facet/meta lookup, TTL 30일)
+- [ ] facet-backfill (namu+Ollama 배치 워커, tmdb_cache 순회 모드)
+- [ ] playwright-pool (브라우저 풀, domcontentloaded, 리소스 차단)
+- [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
 - [ ] enrich + evaluate 결합 플래그 (provider 검색 1회 공유)
 

@@ -1,0 +1,27 @@
+{
+  "project": "MediSearch",
+  "phase": "mediax-db-migration",
+  "goal": "MediSearch 자체 저장 테이블을 SQLite에서 mediaX PostgreSQL로 이전 — ms_* 프리픽스 + tmdb_id 키",
+  "steps": [
+    {
+      "step": 1, "name": "step1-models-schema", "status": "completed",
+      "summary": "models.py 3개 테이블명 ms_* 변경 + MovieFacet/MovieMeta에 tmdb_id 컬럼 추가, 기존 테스트 2개 fix",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 2, "name": "step2-db-config", "status": "completed",
+      "summary": "config.py DATABASE_URL → mediaX PostgreSQL, docker-compose DATABASE_URL + OLLAMA_TASK_MODEL=qwen2.5:14b 업데이트",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 3, "name": "step3-pipeline-wiring", "status": "completed",
+      "summary": "_save_facet/_save_meta에 tmdb_id 파라미터 추가, multi_runner+metadata_runner 저장 경로 연결",
+      "completed_at": "2026-06-12"
+    },
+    {
+      "step": 4, "name": "step4-test-isolation", "status": "completed",
+      "summary": "backend/conftest.py 신규 생성 — DATABASE_URL=sqlite:///:memory: 기본값으로 테스트 PostgreSQL 격리",
+      "completed_at": "2026-06-12"
+    }
+  ]
+}

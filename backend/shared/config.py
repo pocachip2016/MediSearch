@@ -5,8 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Database — POC 로컬 기본 SQLite
-    DATABASE_URL: str = "sqlite:///./medisearch_dev.db"
+    # MediSearch own tables (ms_*) — same media_ax DB, PostgreSQL
+    DATABASE_URL: str = (
+        "postgresql+psycopg2://media_ax:x31sFEebPbyFtHMf7S6O1Ost@host.docker.internal:5432/media_ax"
+    )
 
     # mediaX Postgres (읽기 전용) — TMDB/KMDb 캐시 소스
     # Docker 컨테이너 → host.docker.internal, 호스트 직접 실행 → localhost
