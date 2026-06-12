@@ -16,6 +16,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from models import MovieMeta, SearchSource
+from pipeline._events import EventCallback, doc_previews, emit
 from pipeline.metadata_extractor import MetadataExtractionEngine
 from pipeline.metadata_merge import merge_metadata
 from pipeline.metadata_schema import attach_coverage, empty_metadata, validate_metadata
@@ -40,9 +41,18 @@ class MetadataRunner:
         self.db = db
 
     async def run(
-        self, query: str | SearchQuery, require_web: bool = False
+        self,
+        query: str | SearchQuery,
+        require_web: bool = False,
+        on_event: EventCallback = None,
+        persist: bool = True,
     ) -> dict:
         sq = SearchQuery.from_text(query) if isinstance(query, str) else query
+
+        await emit(on_event, "search_start", {
+            "providers": [p.provider_name for p in self.providers],
+            "query": {"title": sq.title, "tmdb_id": sq.tmdb_id, "imdb_id": sq.imdb_id},
+        })
 
         # ── Phase 1: 병렬 검색 ───────────────────────────────
         docs_by_provider: dict[str, list] = {}
@@ -63,6 +73,12 @@ class MetadataRunner:
                 "structured": False,
             })
             logger.info(f"[meta_runner] {provider.provider_name} → {len(docs)}개")
+            await emit(on_event, "provider_search", {
+                "provider": provider.provider_name,
+                "docs_count": len(docs),
+                "status": "ok" if docs else "empty",
+                "docs": doc_previews(docs),
+            })
 
         # ── require_web 조기 종료 ────────────────────────────
         web_has_docs = any(
@@ -83,11 +99,17 @@ class MetadataRunner:
             }
 
         # ── Phase 2: 하이브리드 추출 ─────────────────────────
+        await emit(on_event, "extract_start", {})
         all_docs = []
         entries: list[tuple[dict, float]] = []
         provider_names: list[str] = []
         source_types: list[str] = []
         synopsis_raws: list[str] = []   # story 폴백용
+
+        # 텍스트 doc 수집용 (LLM 1회 합산 호출)
+        all_text_docs: list = []
+        text_provider_names: list[str] = []
+        text_trust_scores: list[float] = []
 
         detail_map: dict[str, dict] = {d["provider"]: d for d in providers_detail}
 
@@ -105,12 +127,11 @@ class MetadataRunner:
             text_docs = [d for d in docs if d.meta is None]
 
             if structured_docs:
-                # 구조화 소스: validate_metadata 직접 채택, 병합은 meta들 평균 trust
+                # 구조화 소스: validate_metadata 직접 채택
                 for d in structured_docs:
                     meta = validate_metadata(d.meta)
                     entries.append((meta, d.trust_score))
                     provider_names.append(provider.provider_name)
-                    # synopsis_raw 수집 (story 폴백용)
                     raw = (d.meta or {}).get("synopsis_raw")
                     if raw:
                         synopsis_raws.append(raw)
@@ -121,18 +142,36 @@ class MetadataRunner:
                 })
 
             if text_docs:
-                # 텍스트 소스: LLM 추출
-                try:
-                    meta = await self.extractor.extract(sq.title, text_docs)
-                    entries.append((meta, p_trust))
-                    provider_names.append(provider.provider_name)
-                    detail_map[provider.provider_name].update({
-                        "trust": round(p_trust, 3),
-                        "confidence": meta.get("confidence"),
-                        "evaluated": True,
-                    })
-                except Exception as e:
-                    logger.warning(f"[meta_runner] {provider.provider_name} 추출 실패: {e}")
+                # 텍스트 doc 수집 — LLM 호출은 아래에서 1회로 합산
+                all_text_docs.extend(text_docs)
+                text_provider_names.append(provider.provider_name)
+                text_trust_scores.append(p_trust)
+                detail_map[provider.provider_name].update({
+                    "trust": round(p_trust, 3),
+                    "evaluated": True,
+                })
+
+        # 텍스트 doc 전체를 LLM 1회 호출로 추출 (provider별 직렬 N회 → 단일 호출)
+        if all_text_docs:
+            try:
+                meta = await self.extractor.extract(sq.title, all_text_docs)
+                avg_trust = sum(text_trust_scores) / len(text_trust_scores)
+                rep_provider = text_provider_names[0]   # 대표 provider명 (provenance용)
+                entries.append((meta, avg_trust))
+                provider_names.append(rep_provider)
+                for pname in text_provider_names:
+                    detail_map[pname]["confidence"] = meta.get("confidence")
+                logger.info(
+                    f"[meta_runner] text LLM 1회 호출 ({len(text_provider_names)} providers"
+                    f" → {len(all_text_docs)} docs)"
+                )
+                await emit(on_event, "text_extract", {
+                    "providers": text_provider_names,
+                    "docs_count": len(all_text_docs),
+                    "confidence": meta.get("confidence"),
+                })
+            except Exception as e:
+                logger.warning(f"[meta_runner] text 통합 추출 실패: {e}")
 
         # ── Phase 3: 병합 ────────────────────────────────────
         if not entries:
@@ -153,8 +192,13 @@ class MetadataRunner:
             except Exception as e:
                 logger.warning(f"[meta_runner] story 재작성 실패: {e}")
 
-        source_count = await self._save_sources(sq.title, all_docs)
-        meta_id = await self._save_meta(sq.title, merged, source_count)
+        await emit(on_event, "merge", {
+            "confidence": merged.get("confidence"),
+            "coverage": merged.get("_coverage"),
+        })
+
+        source_count = await self._save_sources(sq.title, all_docs, persist=persist)
+        meta_id = await self._save_meta(sq.title, merged, source_count, persist=persist)
 
         return {
             "movie_query": sq.title,
@@ -172,7 +216,9 @@ class MetadataRunner:
             logger.warning(f"[meta_runner] {provider.provider_name} 검색 실패: {e}")
             return []
 
-    async def _save_sources(self, query: str, docs: list) -> int:
+    async def _save_sources(self, query: str, docs: list, persist: bool = True) -> int:
+        if not persist:
+            return len(docs)
         count = 0
         for doc in docs:
             try:
@@ -190,7 +236,9 @@ class MetadataRunner:
         self.db.commit()
         return count
 
-    async def _save_meta(self, query: str, meta: dict, source_count: int) -> int | None:
+    async def _save_meta(self, query: str, meta: dict, source_count: int, persist: bool = True) -> int | None:
+        if not persist:
+            return None
         try:
             mm = MovieMeta(
                 movie_query=query,

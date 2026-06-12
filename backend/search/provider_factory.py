@@ -25,17 +25,22 @@ _PROVIDER_MAP: dict[str, callable] = {
 }
 
 
-def build_providers(names: list[str]) -> list[SearchProvider]:
+def build_providers(names: list[str], headless: bool = True) -> list[SearchProvider]:
     """name 목록 → SearchProvider 인스턴스 리스트.
 
     알 수 없는 이름은 경고 후 무시. 빈 리스트 반환 시 호출부에서 처리.
+    headless=False 시 playwright provider는 실제 브라우저 창을 표시한다 (로컬 실행 전용).
     """
+    provider_map: dict[str, callable] = {
+        **_PROVIDER_MAP,
+        "playwright": lambda: PlaywrightProvider(headless=headless, timeout_ms=15000),
+    }
     providers: list[SearchProvider] = []
     for name in names:
-        factory = _PROVIDER_MAP.get(name)
+        factory = provider_map.get(name)
         if factory is None:
             logger.warning(f"[factory] 알 수 없는 provider: {name!r} — 무시")
             continue
         providers.append(factory())
-        logger.info(f"[factory] provider 등록: {name}")
+        logger.info(f"[factory] provider 등록: {name} (headless={headless if name == 'playwright' else 'N/A'})")
     return providers

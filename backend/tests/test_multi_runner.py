@@ -139,6 +139,40 @@ async def test_multi_runner_provider_exception_skipped(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_multi_runner_on_event_fired(mock_db):
+    """on_event 콜백이 search_start / provider_search / eval_start / provider_eval / merge 순으로 호출됨."""
+    collected: list[str] = []
+
+    async def cb(event_type: str, payload: dict):
+        collected.append(event_type)
+
+    p1 = _make_provider("src1", [_doc("src1", 0.9)])
+    ev = _make_evaluator()
+
+    runner = MultiSourceRunner([p1], ev, mock_db)
+    await runner.run("기생충", on_event=cb)
+
+    assert collected[0] == "search_start"
+    assert "provider_search" in collected
+    assert "eval_start" in collected
+    assert "provider_eval" in collected
+    assert collected[-1] == "merge"
+
+
+@pytest.mark.asyncio
+async def test_multi_runner_persist_false_no_db_write(mock_db):
+    """persist=False 시 DB add 호출 없음(facet_id=None)."""
+    p1 = _make_provider("src1", [_doc("src1", 0.9)])
+    ev = _make_evaluator()
+
+    runner = MultiSourceRunner([p1], ev, mock_db)
+    result = await runner.run("기생충", persist=False)
+
+    assert result["facet_id"] is None
+    mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_multi_runner_trust_weighted(mock_db):
     """trust_score 반영 — high trust provider 값이 score 에 더 반영되는지 확인."""
     p_high = _make_provider("high", [_doc("high", trust=0.95)])

@@ -219,6 +219,39 @@ async def test_meta_id_returned(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_metadata_runner_on_event_fired(mock_db):
+    """on_event 콜백이 search_start / provider_search / extract_start / merge 순으로 호출됨."""
+    collected: list[str] = []
+
+    async def cb(event_type: str, payload: dict):
+        collected.append(event_type)
+
+    p = _make_provider("omdb", [_structured_doc("omdb")])
+    ex = _make_extractor()
+
+    runner = MetadataRunner([p], ex, mock_db)
+    await runner.run("기생충", on_event=cb)
+
+    assert collected[0] == "search_start"
+    assert "provider_search" in collected
+    assert "extract_start" in collected
+    assert "merge" in collected
+
+
+@pytest.mark.asyncio
+async def test_metadata_runner_persist_false_no_db_write(mock_db):
+    """persist=False 시 DB add 호출 없음(meta_id=None)."""
+    p = _make_provider("omdb", [_structured_doc("omdb")])
+    ex = _make_extractor()
+
+    runner = MetadataRunner([p], ex, mock_db)
+    result = await runner.run("기생충", persist=False)
+
+    assert result["meta_id"] is None
+    mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_providers_detail_includes_structured_flag(mock_db):
     """providers_detail에 structured 플래그 포함."""
     p = _make_provider("tmdb", [_structured_doc("tmdb")])

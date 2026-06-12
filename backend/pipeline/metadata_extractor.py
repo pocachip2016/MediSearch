@@ -47,10 +47,11 @@ def _build_extraction_prompt(title: str, docs: list[SourceDocument]) -> str:
 - "series": content_type이 "series"일 때만 {{"total_seasons": 정수 또는 null, "total_episodes": 정수 또는 null, "first_air_date": "YYYY-MM-DD" 또는 null, "air_status": "ongoing" 또는 "ended" 또는 null, "networks": 방송사 리스트}}, 아니면 null
 
 ## 출력 규칙 (반드시 준수)
-1. 소스 텍스트에 명시된 정보만 추출하세요. 추정·일반지식 보충 절대 금지 — 텍스트에 없으면 null/빈 배열.
-2. 인명은 텍스트 표기 그대로 (번역 금지).
-3. story는 30자 내외 한 문장 — 길면 잘라내고, 없으면 null.
-4. 순수 JSON 하나만 출력하세요.
+1. "{title}"을(를) 직접 다루는 소스에서만 추출하세요. 동명이의어·관련 없는 주제를 다루는 소스는 무시하세요.
+2. 소스 텍스트에 명시된 정보만 추출하세요. 추정·일반지식 보충 절대 금지 — 텍스트에 없으면 null/빈 배열.
+3. 인명은 텍스트 표기 그대로 (번역 금지).
+4. story는 30자 내외 한 문장 — 길면 잘라내고, 없으면 null.
+5. 순수 JSON 하나만 출력하세요.
 """
 
 

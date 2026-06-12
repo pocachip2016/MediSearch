@@ -10,6 +10,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from models import MovieFacet, SearchSource
+from pipeline._events import EventCallback, doc_previews, emit
 from pipeline.evaluator import EvaluationEngine
 from pipeline.facet_merge import merge_facets
 from pipeline.facets import attach_coverage, empty_facet
@@ -40,8 +41,19 @@ class MultiSourceRunner:
         self.evaluator = evaluator
         self.db = db
 
-    async def run(self, query: str | SearchQuery, require_namu: bool = False) -> dict:
+    async def run(
+        self,
+        query: str | SearchQuery,
+        require_namu: bool = False,
+        on_event: EventCallback = None,
+        persist: bool = True,
+    ) -> dict:
         sq = SearchQuery.from_text(query) if isinstance(query, str) else query
+
+        await emit(on_event, "search_start", {
+            "providers": [p.provider_name for p in self.providers],
+            "query": {"title": sq.title, "tmdb_id": sq.tmdb_id, "imdb_id": sq.imdb_id},
+        })
 
         # ── Phase 1: 모든 provider 검색 (평가 전 수행) ────────────────────────
         docs_by_provider: dict[str, list] = {}
@@ -59,7 +71,6 @@ class MultiSourceRunner:
             else:
                 logger.info(f"[multi] {provider.provider_name} → 0개 (건너뜀)")
 
-            # 검색 결과 저장
             providers_detail.append({
                 "provider": provider.provider_name,
                 "docs_count": len(docs),
@@ -67,6 +78,12 @@ class MultiSourceRunner:
                 "trust": None,
                 "confidence": None,
                 "evaluated": False,
+            })
+            await emit(on_event, "provider_search", {
+                "provider": provider.provider_name,
+                "docs_count": len(docs),
+                "status": "ok" if docs else "empty",
+                "docs": doc_previews(docs),
             })
 
         # ── require_namu 조기 종료: 웹 소스(namu+wiki) 둘 다 없을 때만 생략 ─────
@@ -85,6 +102,8 @@ class MultiSourceRunner:
             }
 
         # ── Phase 2: provider별 Ollama 평가 ───────────────────────────────────
+        await emit(on_event, "eval_start", {})
+
         all_docs = []
         entries: list[tuple[dict, float]] = []
         provider_detail_map: dict[str, dict] = {d["provider"]: d for d in providers_detail}
@@ -112,6 +131,12 @@ class MultiSourceRunner:
                         "confidence": facet.get("confidence"),
                         "evaluated": True,
                     })
+                await emit(on_event, "provider_eval", {
+                    "provider": provider.provider_name,
+                    "trust": round(p_trust, 3),
+                    "confidence": facet.get("confidence"),
+                    "facet": facet,
+                })
             except Exception as e:
                 logger.warning(f"[multi] {provider.provider_name} 평가 실패: {e}")
 
@@ -125,8 +150,13 @@ class MultiSourceRunner:
                 f"(confidence={merged.get('confidence')})"
             )
 
-        source_count = await self._save_sources(sq.title, all_docs)
-        facet_id = await self._save_facet(sq.title, merged, source_count)
+        await emit(on_event, "merge", {
+            "confidence": merged.get("confidence"),
+            "coverage": merged.get("_coverage"),
+        })
+
+        source_count = await self._save_sources(sq.title, all_docs, persist=persist)
+        facet_id = await self._save_facet(sq.title, merged, source_count, persist=persist)
 
         return {
             "movie_query": sq.title,
@@ -136,7 +166,9 @@ class MultiSourceRunner:
             "providers_detail": providers_detail,
         }
 
-    async def _save_sources(self, query: str, docs) -> int:
+    async def _save_sources(self, query: str, docs, persist: bool = True) -> int:
+        if not persist:
+            return len(docs)
         count = 0
         for doc in docs:
             try:
@@ -154,7 +186,9 @@ class MultiSourceRunner:
         self.db.commit()
         return count
 
-    async def _save_facet(self, query: str, facet: dict, source_count: int) -> int | None:
+    async def _save_facet(self, query: str, facet: dict, source_count: int, persist: bool = True) -> int | None:
+        if not persist:
+            return None
         try:
             mf = MovieFacet(
                 movie_query=query,
