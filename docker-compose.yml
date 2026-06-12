@@ -7,14 +7,14 @@ services:
       dockerfile: Dockerfile
     container_name: medisearch-api
     ports:
-      - "8080:8000"
+      - "127.0.0.1:8080:8000"
     networks:
       - default
     environment:
       - ENV=development
       - DATABASE_URL=sqlite:///./medisearch_dev.db
       # mediaX PostgreSQL (host.docker.internal 기준, Docker 컨테이너→호스트 게이트웨이)
-      - MEDIAX_DATABASE_URL=postgresql+psycopg2://media_ax:media_ax@host.docker.internal:5432/media_ax
+      - MEDIAX_DATABASE_URL=postgresql+psycopg2://media_ax:x31sFEebPbyFtHMf7S6O1Ost@host.docker.internal:5432/media_ax
       # mediaX Ollama (공유 GPU Ollama)
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_TASK_MODEL=qwen2.5:7b
