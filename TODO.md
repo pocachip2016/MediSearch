@@ -1,17 +1,10 @@
 # MediSearch — TODO
 
 ## Now
-- [x] **D1** MediSearch postgres 재빌드 (`docker compose build --no-cache`) — SQLite→postgres 통일 (`plans/dev-backfill-db-unify/`)
-- [x] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True) (`plans/dev-backfill-db-unify/`)
-
-> **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.
-> mediaX 가 tmdb_cache 순회 + MediSearch `/api/movies/{evaluate,enrich}` HTTP 호출.
-> MediSearch 는 WebSearch/facet 생성 서비스로 유지 (backfill 워커 미보유).
 
 ## Next
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
-- [x] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard (`facet_tasks.py`) (`plans/dev-backfill-db-unify/`)
 
 ## Later
 - [ ] QuotaManager 구현
@@ -20,6 +13,9 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard — 0053 마이그레이션, _apply_copyright_guard(story 제거) (2026-06-13)
+- [x] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True), Phase 1 docs 재사용 메타 추출 (2026-06-13)
+- [x] **D1** MediSearch postgres 재빌드 — SQLite→postgres 통일, ms_* 테이블 3개 (2026-06-13)
 - [x] derived-cache (facet/meta lookup, TTL 30일 — force_refresh 지원)
 - [x] PostgreSQL 전환 → mediax-db-migration (ms_* 테이블 + tmdb_id 키)
 - [x] SSE 스트림 엔드포인트 (POST /api/movies/{evaluate,enrich}/stream) + 프론트 UI (GET /trace, GET /ui)
