@@ -6,7 +6,9 @@
     {
       "id": "D1",
       "name": "medisearch-postgres-rebuild",
-      "status": "pending"
+      "status": "completed",
+      "summary": "postgres 재빌드 완료 — engine.url 검증 + ms_* 테이블 3개 생성 확인, CLAUDE.md 저작권 원칙 추가",
+      "completed_at": "2026-06-13T08:30:00+09:00"
     },
     {
       "id": "D2",

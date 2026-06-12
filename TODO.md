@@ -1,7 +1,7 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] **D1** MediSearch postgres 재빌드 (`docker compose build --no-cache`) — SQLite→postgres 통일 (`plans/dev-backfill-db-unify/`)
+- [x] **D1** MediSearch postgres 재빌드 (`docker compose build --no-cache`) — SQLite→postgres 통일 (`plans/dev-backfill-db-unify/`)
 
 > **facet-backfill → mediaX 이관** (2026-06-12): 외부소스 backfill 은 데이터 오너(mediaX) 소유.
 > mediaX 가 tmdb_cache 순회 + MediSearch `/api/movies/{evaluate,enrich}` HTTP 호출.

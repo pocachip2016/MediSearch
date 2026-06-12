@@ -126,6 +126,40 @@ print('✓ contamination 감지 로직 OK')
     grep -q "PlaywrightProvider" main.py && echo "FAIL: main.py에 PlaywrightProvider 잔류" && exit 1
     echo "✓ playwright 파일 정리 완료"
     ;;
+  D1|postgres-rebuild)
+    echo "=== D1: MediSearch postgres 재빌드 검증 ==="
+    # 1. engine.url이 postgresql인지 확인
+    ENGINE_URL=$(docker exec medisearch-api python3 -c "from shared.database import engine; print(engine.url)" 2>/dev/null || true)
+    if [ -z "$ENGINE_URL" ]; then
+      echo "FAIL: docker exec 실패 (medisearch-api 컨테이너 실행 중인가?)"
+      exit 1
+    fi
+    if ! echo "$ENGINE_URL" | grep -q "postgresql"; then
+      echo "FAIL: engine.url이 postgresql이 아님: $ENGINE_URL"
+      exit 1
+    fi
+    echo "  ✓ engine.url = $ENGINE_URL"
+
+    # 2. ms_* 테이블 존재 확인
+    docker exec medisearch-api python3 -c "
+from shared.database import engine
+from sqlalchemy import inspect
+inspector = inspect(engine)
+tables = inspector.get_table_names()
+ms_tables = [t for t in tables if t.startswith('ms_')]
+expected = {'ms_search_sources', 'ms_movie_facets', 'ms_movie_meta'}
+actual = set(ms_tables)
+if not expected.issubset(actual):
+    print(f'FAIL: ms_* 테이블 미생성. expected={expected}, actual={actual}')
+    exit(1)
+print(f'  ✓ ms_* 테이블 {len(ms_tables)}개 생성됨')
+" || exit 1
+
+    # 3. CLAUDE.md 저작권 원칙 확인
+    [ -f ../CLAUDE.md ] && grep -q "저작권" ../CLAUDE.md || { echo "FAIL: CLAUDE.md에 저작권 원칙 미기재"; exit 1; }
+    echo "  ✓ CLAUDE.md 저작권 원칙 기재"
+    echo "=== PASS ==="
+    ;;
   all)
     $PYTEST tests/ -q --tb=short
     ;;
