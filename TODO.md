@@ -1,11 +1,9 @@
 # MediSearch — TODO
 
 ## Now
-- [x] PostgreSQL 전환 → mediax-db-migration (ms_* 테이블 + tmdb_id 키)
+- [ ] facet-backfill (namu+Ollama 배치 워커, tmdb_cache 순회 모드)
 
 ## Next
-- [ ] derived-cache (facet/meta lookup, TTL 30일)
-- [ ] facet-backfill (namu+Ollama 배치 워커, tmdb_cache 순회 모드)
 - [ ] playwright-pool (브라우저 풀, domcontentloaded, 리소스 차단)
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
@@ -18,6 +16,8 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] derived-cache (facet/meta lookup, TTL 30일 — force_refresh 지원)
+- [x] PostgreSQL 전환 → mediax-db-migration (ms_* 테이블 + tmdb_id 키)
 - [x] SSE 스트림 엔드포인트 (POST /api/movies/{evaluate,enrich}/stream) + 프론트 UI (GET /trace, GET /ui)
 - [x] **ui-2 · SSE 엔드포인트 + /trace 서빙** — `/api/movies/{evaluate,enrich}/stream` (asyncio.Queue), `/trace` FileResponse, headless 쿼리 파싱
 - [x] **ui-3 · 프론트 단일 페이지** — `frontend/index.html` 폼·타임라인·EventSource·JSON viewer, 브라우저 실행 확인
