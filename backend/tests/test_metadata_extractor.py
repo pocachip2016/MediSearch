@@ -71,11 +71,29 @@ class TestExtract:
         assert result["story"] == "반지하 가족의 계급 투쟁"
 
     @pytest.mark.asyncio
-    async def test_llm_none_returns_empty(self, engine):
+    async def test_extract_infra_error_propagates(self, engine):
+        """인프라 실패는 빈 메타로 삼키지 않고 전파 — 빈 success 영속 차단."""
+        import httpx
+        from pipeline.ollama_client import OllamaUnavailableError
+
         client = MagicMock()
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=None)
-        client.post = AsyncMock(side_effect=Exception("connection refused"))
+        client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        with patch("pipeline.ollama_client.httpx.AsyncClient", return_value=client):
+            with pytest.raises(OllamaUnavailableError):
+                await engine.extract("기생충", [_doc()])
+
+    @pytest.mark.asyncio
+    async def test_extract_unparseable_degrades_to_empty(self, engine):
+        """모델은 응답했으나 파싱불가 → 빈 메타(정당한 degrade)."""
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"response": "not-json"}
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=None)
+        client.post = AsyncMock(return_value=resp)
         with patch("pipeline.ollama_client.httpx.AsyncClient", return_value=client):
             result = await engine.extract("기생충", [_doc()])
         assert result["content_type"] is None
@@ -134,11 +152,15 @@ class TestRewriteStory:
         assert len(result) <= 60
 
     @pytest.mark.asyncio
-    async def test_llm_failure_returns_none(self, engine):
+    async def test_rewrite_story_infra_error_propagates(self, engine):
+        """인프라 실패는 전파 — 호출측(multi_runner)에서 story=None 으로 degrade 결정."""
+        import httpx
+        from pipeline.ollama_client import OllamaUnavailableError
+
         client = MagicMock()
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=None)
-        client.post = AsyncMock(side_effect=Exception("timeout"))
+        client.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
         with patch("pipeline.ollama_client.httpx.AsyncClient", return_value=client):
-            result = await engine.rewrite_story("무제", ["텍스트"])
-        assert result is None
+            with pytest.raises(OllamaUnavailableError):
+                await engine.rewrite_story("무제", ["텍스트"])

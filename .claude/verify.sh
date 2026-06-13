@@ -226,6 +226,20 @@ print(f'  ✓ ms_* 테이블 {len(ms_tables)}개 생성됨')
     echo "  ✓ 두 파일 total_trust 분모 제거 + contributing_trust 적용"
     echo "=== PASS ==="
     ;;
+  llm-unavailable-guard)
+    echo "=== llm-unavailable-guard: Ollama 인프라 실패 전파 검증 ==="
+    # 404/연결거부/타임아웃 → OllamaUnavailableError 전파, 파싱불가 → degrade(None)
+    $PYTEST tests/test_ollama_client.py tests/test_evaluator.py tests/test_metadata_extractor.py -q --tb=short 2>&1
+    STATUS=$?
+    [ $STATUS -ne 0 ] && exit 1
+    # generate_json 이 인프라 실패를 raise 하는지 (None 으로 삼키지 않음) 정적 확인
+    grep -q "raise OllamaUnavailableError" pipeline/ollama_client.py || { echo "FAIL: ollama_client 인프라 실패 raise 누락"; exit 1; }
+    grep -q "except OllamaUnavailableError" pipeline/multi_runner.py || { echo "FAIL: multi_runner 전파 가드 누락"; exit 1; }
+    # docker-compose 모델이 설치된 값인지 (미설치 14b 회귀 차단)
+    grep -q "OLLAMA_TASK_MODEL=qwen2.5:14b" "$(dirname "$0")/../docker-compose.yml" && { echo "FAIL: docker-compose 미설치 14b 잔존"; exit 1; }
+    echo "  ✓ 인프라 실패 전파 + 모델 정합"
+    echo "=== PASS ==="
+    ;;
   all)
     $PYTEST tests/ -q --tb=short
     ;;

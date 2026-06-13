@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     OLLAMA_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3:4b"
     # 구조화 태스크(facet 추출/분류) 전용 — reasoning 모델(qwen3) 회피
-    OLLAMA_TASK_MODEL: str = "qwen2.5:3b"
+    OLLAMA_TASK_MODEL: str = "qwen2.5:7b"
     # 평가 엔진 폴백 체인 (콤마 구분) — 향후 무료 LLM 추가 자리
     LLM_ENGINE: str = "ollama"
 

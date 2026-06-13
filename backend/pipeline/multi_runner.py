@@ -18,6 +18,7 @@ from pipeline.facet_merge import merge_facets
 from pipeline.facets import attach_coverage, empty_facet
 from pipeline.metadata_extractor import MetadataExtractionEngine
 from pipeline.metadata_merge import merge_metadata
+from pipeline.ollama_client import OllamaUnavailableError
 from pipeline.metadata_schema import (
     attach_coverage as attach_meta_coverage,
     empty_metadata,
@@ -175,6 +176,8 @@ class MultiSourceRunner:
                     "confidence": facet.get("confidence"),
                     "facet": facet,
                 })
+            except OllamaUnavailableError:
+                raise  # 인프라 불능 — 전체 run 실패시켜 빈 facet success 영속 차단
             except Exception as e:
                 logger.warning(f"[multi] {provider.provider_name} 평가 실패: {e}")
 
@@ -251,6 +254,8 @@ class MultiSourceRunner:
                 avg_trust = sum(text_trust_scores) / len(text_trust_scores)
                 entries.append((meta, avg_trust))
                 provider_names.append(text_provider_names[0])
+            except OllamaUnavailableError:
+                raise  # 인프라 불능 — 빈 meta success 영속 차단
             except Exception as e:
                 logger.warning(f"[multi] include_meta text 추출 실패: {e}")
 
