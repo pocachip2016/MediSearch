@@ -228,3 +228,43 @@ class TestEvaluationEngine:
         assert flags["is_gory"] is True
         assert flags["is_sexual"] is False
         assert flags["age_suggestion"] == "청소년관람불가"
+
+
+class TestGenreHint:
+    """_build_prompt genre_hint 그라운딩."""
+
+    def _doc(self):
+        from search.base import SourceDocument, SourceType
+        return SourceDocument(
+            title="테스트", text="줄거리", url="http://test",
+            source_domain="test", source_type=SourceType.synopsis, trust_score=0.9,
+        )
+
+    def test_genre_hint_included_in_prompt(self):
+        prompt = _build_prompt("녹턴", [self._doc()], genre_hint=["다큐멘터리", "음악"])
+        assert "공식 장르(TMDB): 다큐멘터리, 음악" in prompt
+        assert "primary_genre는 이를 우선 고려" in prompt
+
+    def test_genre_hint_none_not_in_prompt(self):
+        prompt = _build_prompt("녹턴", [self._doc()], genre_hint=None)
+        assert "공식 장르" not in prompt
+        assert "TMDB" not in prompt
+
+    def test_genre_hint_empty_list_not_in_prompt(self):
+        prompt = _build_prompt("녹턴", [self._doc()], genre_hint=[])
+        assert "공식 장르" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_evaluate_passes_genre_hint_to_prompt(self, sample_docs):
+        """evaluate()에 genre_hint 전달 시 프롬프트에 반영됨."""
+        engine = EvaluationEngine()
+        captured: list[str] = []
+
+        async def mock_call_ollama(prompt: str):
+            captured.append(prompt)
+            return None  # empty_facet 반환 경로
+
+        engine._call_ollama = mock_call_ollama
+        await engine.evaluate("녹턴", sample_docs, genre_hint=["다큐멘터리"])
+        assert captured, "프롬프트 캡처 실패"
+        assert "다큐멘터리" in captured[0]

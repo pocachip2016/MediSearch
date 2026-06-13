@@ -7,6 +7,7 @@ from pipeline.metadata_merge import (
     _merge_list_by_trust,
     _merge_cast,
     _mad_filter_ints,
+    _apply_tmdb_precedence,
 )
 from pipeline.metadata_schema import validate_metadata
 
@@ -205,3 +206,68 @@ class TestMergeMetadata:
         m = merge_metadata([(e1, 0.9)], source_types=["synopsis"])
         assert m["_coverage"]["source_count"] == 1
         assert 0.0 < m["confidence"] <= 1.0
+
+
+class TestTmdbPrecedence:
+    """_apply_tmdb_precedence — TMDB 권위 오버레이."""
+
+    def _run(self, tmdb_meta: dict, other_meta: dict, other_trust: float = 0.9):
+        entries = [
+            (validate_metadata(tmdb_meta), 0.95),
+            (validate_metadata(other_meta), other_trust),
+        ]
+        return merge_metadata(entries, provider_names=["tmdb", "kmdb"])
+
+    def test_tmdb_production_year_wins(self):
+        """TMDB가 연도를 제공하면 타 소스가 달라도 TMDB 값 사용."""
+        m = self._run(
+            tmdb_meta={"content_type": "movie", "production_year": 2019},
+            other_meta={"content_type": "movie", "production_year": 2020},
+        )
+        assert m["production_year"] == 2019
+        assert m["_provenance"]["production_year"] == ["tmdb"]
+
+    def test_tmdb_original_title_wins(self):
+        m = self._run(
+            tmdb_meta={"content_type": "movie", "production_year": 2019, "original_title": "Parasite"},
+            other_meta={"content_type": "movie", "production_year": 2019, "original_title": "다른제목"},
+        )
+        assert m["original_title"] == "Parasite"
+        assert m["_provenance"]["original_title"] == ["tmdb"]
+
+    def test_tmdb_genres_always_included(self):
+        """TMDB 장르는 34% 임계 무관하게 항상 포함, 타 소스 추가 장르도 union."""
+        # tmdb: 드라마, kmdb: 멜로/로맨스 (trust 임계 통과)
+        m = self._run(
+            tmdb_meta={"content_type": "movie", "production_year": 2019, "genres": ["드라마"]},
+            other_meta={"content_type": "movie", "production_year": 2019, "genres": ["드라마", "멜로/로맨스"]},
+        )
+        assert "드라마" in m["genres"]
+        assert "멜로/로맨스" in m["genres"]
+        assert m["genres"][0] == "드라마"  # TMDB 항목 맨 앞
+        assert m["_provenance"]["genres"][0] == "tmdb"
+
+    def test_tmdb_genres_no_value_keeps_other_sources(self):
+        """TMDB가 genres 미제공 시 기존 병합 결과(kmdb) 유지."""
+        m = self._run(
+            tmdb_meta={"content_type": "movie", "production_year": 2019},
+            other_meta={"content_type": "movie", "production_year": 2019, "genres": ["범죄", "스릴러"]},
+        )
+        assert "범죄" in m["genres"]
+        assert "스릴러" in m["genres"]
+
+    def test_directors_not_overridden_by_tmdb(self):
+        """directors는 TMDB가 제공 안 하면 gap-fill(kmdb) 그대로."""
+        m = self._run(
+            tmdb_meta={"content_type": "movie", "production_year": 2019},
+            other_meta={"content_type": "movie", "production_year": 2019, "directors": ["봉준호"]},
+        )
+        assert "봉준호" in m["directors"]
+
+    def test_no_tmdb_provider_no_change(self):
+        """provider_names에 tmdb 없으면 오버레이 미적용."""
+        e1 = validate_metadata({"content_type": "movie", "production_year": 2000, "genres": ["액션"]})
+        e2 = validate_metadata({"content_type": "movie", "production_year": 1999, "genres": ["드라마"]})
+        m = merge_metadata([(e1, 0.9), (e2, 0.8)], provider_names=["kmdb", "omdb"])
+        # tmdb 없으므로 오버레이 없음 — 기존 merge 결과만
+        assert m["production_year"] in (1999, 2000)

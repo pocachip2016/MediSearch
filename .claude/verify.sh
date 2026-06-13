@@ -226,6 +226,18 @@ print(f'  ✓ ms_* 테이블 {len(ms_tables)}개 생성됨')
     echo "  ✓ 두 파일 total_trust 분모 제거 + contributing_trust 적용"
     echo "=== PASS ==="
     ;;
+  tmdb-authoritative-genre)
+    echo "=== tmdb-authoritative-genre: TMDB 권위 필드 노출 + metadata TMDB-first + facet 장르 그라운딩 ==="
+    $PYTEST tests/test_tmdb_provider.py tests/test_metadata_merge.py tests/test_evaluator.py -q --tb=short 2>&1
+    STATUS=$?
+    [ $STATUS -ne 0 ] && exit 1
+    # _TMDB_GENRE_KO 매핑 정적 확인
+    grep -q "_TMDB_GENRE_KO" search/tmdb_provider.py || { echo "FAIL: _TMDB_GENRE_KO 없음"; exit 1; }
+    grep -q "_map_genres" search/tmdb_provider.py || { echo "FAIL: _map_genres 없음"; exit 1; }
+    grep -q "genre_ids, original_title" search/tmdb_provider.py || { echo "FAIL: SELECT에 genre_ids/original_title 미추가"; exit 1; }
+    echo "  ✓ tmdb_provider genre 노출 + 테스트 통과"
+    echo "=== PASS ==="
+    ;;
   llm-unavailable-guard)
     echo "=== llm-unavailable-guard: Ollama 인프라 실패 전파 검증 ==="
     # 404/연결거부/타임아웃 → OllamaUnavailableError 전파, 파싱불가 → degrade(None)

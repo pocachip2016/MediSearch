@@ -1,8 +1,10 @@
 # MediSearch — TODO
 
 ## Now
+- [ ] **tmdb-authoritative-genre** TMDB genre_ids 노출 + metadata TMDB-first + facet 장르 그라운딩 (플랜 승인됨, feature/tmdb-authoritative-genre 브랜치)
 
 ## Next
+- [ ] confidence 기반 품질 게이트 도입 검토 (현재는 source_count만 사용)
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
 
@@ -13,6 +15,8 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] **facet-confidence-contract** top-level confidence 미러 추가 — MovieEvaluateResponse + multi_runner result dict, mediaX 계약 불일치 해소 (2026-06-13)
+- [x] **llm-unavailable-guard** 모델 14b→7b + OllamaUnavailableError 인프라 실패 전파 가드 (2026-06-13)
 - [x] **merge-fix** trust 가중 list 병합 분모를 기여 소스로 한정 — abstain 소스 희석 제거, metadata_merge+facet_merge 동시 (2026-06-13)
 - [x] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard — 0053 마이그레이션, _apply_copyright_guard(story 제거) (2026-06-13)
 - [x] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True), Phase 1 docs 재사용 메타 추출 (2026-06-13)

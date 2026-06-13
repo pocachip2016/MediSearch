@@ -36,7 +36,7 @@ _FEW_SHOT_EXAMPLES = """## 출력 예시 (실제 분석 기준 참고)
 """
 
 
-def _build_prompt(movie_query: str, docs: list[SourceDocument]) -> str:
+def _build_prompt(movie_query: str, docs: list[SourceDocument], genre_hint: list[str] | None = None) -> str:
     sources_text = ""
     for i, doc in enumerate(docs, 1):
         snippet = (doc.text or "")[:_MAX_TEXT_PER_DOC]
@@ -49,6 +49,12 @@ def _build_prompt(movie_query: str, docs: list[SourceDocument]) -> str:
         f'  "{k}": 다음 중 해당하는 것 복수 선택 — {v}' for k, v in LIST_VOCAB.items()
     )
     score_list = ", ".join(SCORE_FIELDS)
+
+    genre_hint_line = (
+        f"\n## 장르 그라운딩\n참고 — 이 작품의 공식 장르(TMDB): {', '.join(genre_hint)}. "
+        "primary_genre는 이를 우선 고려하되, 줄거리가 명백히 다른 장르를 가리키면 줄거리를 따르라.\n"
+        if genre_hint else ""
+    )
 
     return f"""당신은 영화 분석 AI입니다. 아래 소스 텍스트를 바탕으로 영화 "{movie_query}"의 분석 데이터를 JSON으로 출력하세요.
 
@@ -84,7 +90,7 @@ def _build_prompt(movie_query: str, docs: list[SourceDocument]) -> str:
   "one_liner": 감성 한줄평 (한국어, 최대 100자)
 
 {_FEW_SHOT_EXAMPLES}
-
+{genre_hint_line}
 ## 출력 규칙
 1. score 11개 필드는 모두 반드시 0.0~1.0 실수로 입력. null/누락 절대 금지.
 2. 소스 정보가 부족해도 장르·내용 맥락으로 추정값을 제공할 것.
@@ -102,7 +108,8 @@ class EvaluationEngine:
         self.base_url = (base_url or settings.OLLAMA_URL).rstrip("/")
 
     async def evaluate(
-        self, movie_query: str, docs: list[SourceDocument]
+        self, movie_query: str, docs: list[SourceDocument],
+        genre_hint: list[str] | None = None,
     ) -> dict:
         """SourceDocument 리스트 → 검증된 facet dict.
 
@@ -114,7 +121,7 @@ class EvaluationEngine:
             logger.warning(f"[evaluator] 소스 없음: {movie_query}")
             return attach_coverage(empty_facet(), source_types)
 
-        prompt = _build_prompt(movie_query, docs)
+        prompt = _build_prompt(movie_query, docs, genre_hint=genre_hint)
         raw = await self._call_ollama(prompt)
 
         if raw is None:
