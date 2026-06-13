@@ -148,6 +148,13 @@ class MultiSourceRunner:
         provider_detail_map: dict[str, dict] = {d["provider"]: d for d in providers_detail}
         source_types: list[str] = []
 
+        # TMDB 권위 장르 — Phase 2 전 1회 추출, 모든 provider 평가에 동일 힌트 전달
+        tmdb_docs = docs_by_provider.get("tmdb", [])
+        genre_hint: list[str] | None = next(
+            (doc.meta.get("genres") for doc in tmdb_docs if doc.meta and doc.meta.get("genres")),
+            None,
+        )
+
         for provider in self.providers:
             docs = docs_by_provider.get(provider.provider_name, [])
             if not docs:
@@ -158,7 +165,7 @@ class MultiSourceRunner:
             p_trust = sum(d.trust_score for d in docs) / len(docs)
 
             try:
-                facet = await self.evaluator.evaluate(sq.title, docs)
+                facet = await self.evaluator.evaluate(sq.title, docs, genre_hint=genre_hint)
                 entries.append((facet, p_trust))
                 logger.info(
                     f"[multi] {provider.provider_name} → 평가 완료 "

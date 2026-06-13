@@ -14,10 +14,31 @@ from shared.mediax_db import get_mediax_session
 
 logger = logging.getLogger(__name__)
 
+_TMDB_GENRE_KO: dict[int, str] = {
+    28: "액션", 12: "어드벤처", 16: "애니메이션", 35: "코미디", 80: "범죄",
+    99: "다큐멘터리", 18: "드라마", 10751: "가족", 14: "판타지", 36: "역사",
+    27: "공포", 10402: "음악", 9648: "미스터리", 10749: "로맨스", 878: "SF",
+    53: "스릴러", 10752: "전쟁", 37: "서부극", 10770: "TV영화",
+}
+
+
+def _map_genres(genre_ids: object) -> list[str]:
+    """genre_ids (JSON list or None) → 한글 장르명 리스트. 미지 ID는 제외."""
+    if not genre_ids:
+        return []
+    if isinstance(genre_ids, str):
+        import json
+        try:
+            genre_ids = json.loads(genre_ids)
+        except Exception:
+            return []
+    return [_TMDB_GENRE_KO[gid] for gid in genre_ids if gid in _TMDB_GENRE_KO]
+
+
 # tmdb_id 정확 조회 (mediaX외부ID 보유 시 사용)
 _QUERY_BY_ID = text(
     """
-    SELECT title, overview, vote_count, popularity, release_date
+    SELECT title, overview, vote_count, popularity, release_date, genre_ids, original_title
     FROM tmdb_movie_cache
     WHERE id = :tmdb_id
       AND overview IS NOT NULL AND overview <> ''
@@ -28,7 +49,7 @@ _QUERY_BY_ID = text(
 # 제목 ILIKE 폴백 — 인기/관객수 랭킹 + 연도 필터 옵션
 _QUERY_BY_TITLE = text(
     """
-    SELECT title, overview, vote_count, popularity, release_date
+    SELECT title, overview, vote_count, popularity, release_date, genre_ids, original_title
     FROM tmdb_movie_cache
     WHERE overview IS NOT NULL AND overview <> ''
       AND (title = :q OR original_title = :q OR title ILIKE :like)
@@ -88,12 +109,15 @@ class TmdbProvider(SearchProvider):
 
         docs: list[SourceDocument] = []
         for row in rows:
-            title, overview, vote_count, popularity, release_date = row
+            title, overview, vote_count, popularity, release_date, genre_ids, original_title = row
             year = release_date.year if release_date else "?"
+            mapped_genres = _map_genres(genre_ids)
             meta = {
                 "content_type": "movie",
                 "production_year": release_date.year if release_date else None,
                 "synopsis_raw": overview or None,
+                "genres": mapped_genres if mapped_genres else None,
+                "original_title": original_title or None,
             }
             docs.append(
                 SourceDocument(

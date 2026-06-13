@@ -4,8 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from search.tmdb_provider import TmdbProvider, _trust_score
+from search.tmdb_provider import TmdbProvider, _trust_score, _map_genres
 from search.base import SearchQuery, SourceType
+
+# (title, overview, vote_count, popularity, release_date, genre_ids, original_title)
+_ROW_PARASITE = ("기생충", "전원백수 기택 가족...", 20693, 34.6, datetime.date(2019, 5, 30), [18, 35], "Parasite")
+_ROW_NO_DATE  = ("무제", "줄거리", 5, 1.0, None, None, None)
 
 
 @pytest.fixture
@@ -34,12 +38,26 @@ def _mock_session(rows):
     return session
 
 
+# --- _map_genres 단위 테스트 ---
+
+def test_map_genres_list():
+    assert _map_genres([18, 28, 9999]) == ["드라마", "액션"]  # 9999 미지 ID 제외
+
+
+def test_map_genres_json_string():
+    assert _map_genres("[35, 80]") == ["코미디", "범죄"]
+
+
+def test_map_genres_empty():
+    assert _map_genres(None) == []
+    assert _map_genres([]) == []
+
+
+# --- search() 통합 mock 테스트 ---
+
 @pytest.mark.asyncio
 async def test_search_maps_rows(provider):
-    rows = [
-        ("기생충", "전원백수 기택 가족...", 20693, 34.6, datetime.date(2019, 5, 30)),
-    ]
-    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
+    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session([_ROW_PARASITE])):
         docs = await provider.search(_sq("기생충"))
 
     assert len(docs) == 1
@@ -70,8 +88,7 @@ async def test_search_query_error_returns_empty(provider):
 
 @pytest.mark.asyncio
 async def test_search_null_release_date(provider):
-    rows = [("무제", "줄거리", 5, 1.0, None)]
-    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
+    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session([_ROW_NO_DATE])):
         docs = await provider.search(_sq("무제"))
     assert docs[0].title == "무제 (?)"
 
@@ -79,8 +96,8 @@ async def test_search_null_release_date(provider):
 @pytest.mark.asyncio
 async def test_search_by_tmdb_id_uses_id_query(provider):
     """tmdb_id 있을 때 ID 정확조회 쿼리 사용 확인."""
-    rows = [("기생충", "시놉시스", 20000, 30.0, datetime.date(2019, 5, 30))]
-    session = _mock_session(rows)
+    row = ("기생충", "시놉시스", 20000, 30.0, datetime.date(2019, 5, 30), [18], "Parasite")
+    session = _mock_session([row])
     with patch("search.tmdb_provider.get_mediax_session", return_value=session):
         docs = await provider.search(_sq("기생충", tmdb_id=496243))
 
@@ -93,8 +110,7 @@ async def test_search_by_tmdb_id_uses_id_query(provider):
 @pytest.mark.asyncio
 async def test_search_doc_meta_populated(provider):
     """TmdbProvider search() 결과에 구조화 meta가 채워져야 함."""
-    rows = [("기생충", "전원백수 기택 가족...", 20693, 34.6, datetime.date(2019, 5, 30))]
-    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
+    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session([_ROW_PARASITE])):
         docs = await provider.search(_sq("기생충"))
 
     meta = docs[0].meta
@@ -102,12 +118,16 @@ async def test_search_doc_meta_populated(provider):
     assert meta["content_type"] == "movie"
     assert meta["production_year"] == 2019
     assert meta["synopsis_raw"] == "전원백수 기택 가족..."
+    assert meta["genres"] == ["드라마", "코미디"]   # [18, 35] 매핑
+    assert meta["original_title"] == "Parasite"
 
 
 @pytest.mark.asyncio
 async def test_search_null_date_meta(provider):
     """release_date가 None이면 production_year도 None."""
-    rows = [("무제", "줄거리", 5, 1.0, None)]
-    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session(rows)):
+    with patch("search.tmdb_provider.get_mediax_session", return_value=_mock_session([_ROW_NO_DATE])):
         docs = await provider.search(_sq("무제"))
-    assert docs[0].meta["production_year"] is None
+    meta = docs[0].meta
+    assert meta["production_year"] is None
+    assert meta["genres"] is None
+    assert meta["original_title"] is None

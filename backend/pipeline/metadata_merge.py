@@ -31,6 +31,7 @@ _MAD_MULTIPLIER = 3.0
 _MAX_KEYWORDS = 8
 _MAX_CAST = 10
 _MAX_DIRECTORS = 5
+_PRIMARY_PROVIDER = "tmdb"  # TMDB가 값을 제공하면 해당 필드의 권위 소스
 
 
 def _mad_filter_ints(values: list[int | None]) -> list[int | None]:
@@ -238,5 +239,48 @@ def merge_metadata(
     else:
         merged["series"] = None
 
+    _apply_tmdb_precedence(merged, provenance, entries, pvdr)
     merged["_provenance"] = provenance
     return attach_coverage(merged, st)
+
+
+def _apply_tmdb_precedence(
+    merged: dict,
+    provenance: dict,
+    entries: list[tuple[dict, float]],
+    provider_names: list[str],
+) -> None:
+    """TMDB 권위 오버레이 (in-place).
+
+    TMDB entry가 있고 값을 제공하는 경우:
+    - 스칼라 필드: TMDB 값이 non-empty이면 병합 결과를 덮어씀
+    - 리스트 필드(genres/countries): TMDB 항목 보장 union — 34% 임계 무관하게 TMDB 항목 포함
+    - directors/cast/keywords/story/series: 변경 없음 (gap-fill만)
+    """
+    tmdb_idx = next(
+        (i for i, p in enumerate(provider_names) if p == _PRIMARY_PROVIDER),
+        None,
+    )
+    if tmdb_idx is None:
+        return
+    tmdb_meta = entries[tmdb_idx][0]
+
+    # 스칼라: TMDB non-empty → 해당 필드 권위 적용
+    for field in ("content_type", "production_year", "original_title", "runtime_minutes"):
+        val = tmdb_meta.get(field)
+        if val is not None:
+            merged[field] = val
+            provenance[field] = [_PRIMARY_PROVIDER]
+
+    # 리스트: TMDB 항목 보장 + 나머지 union
+    for field in ("genres", "countries"):
+        tmdb_items = tmdb_meta.get(field) or []
+        if not tmdb_items:
+            continue  # TMDB 미제공 → 기존 병합 결과 유지
+        existing = merged.get(field) or []
+        tmdb_set = set(tmdb_items)
+        combined = tmdb_items + [x for x in existing if x not in tmdb_set]
+        merged[field] = combined
+        # provenance: tmdb 앞에 위치, 기존 소스 추가
+        existing_prov = [p for p in (provenance.get(field) or []) if p != _PRIMARY_PROVIDER]
+        provenance[field] = [_PRIMARY_PROVIDER] + existing_prov
