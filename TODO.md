@@ -1,7 +1,7 @@
 # MediSearch — TODO
 
 ## Now
-- [ ] **tmdb-authoritative-genre** TMDB genre_ids 노출 + metadata TMDB-first + facet 장르 그라운딩 (플랜 승인됨, feature/tmdb-authoritative-genre 브랜치)
+- [x] **tmdb-authoritative-genre** TMDB genre_ids 노출 + metadata TMDB-first + facet 장르 그라운딩 (2026-06-13)
 
 ## Next
 - [ ] confidence 기반 품질 게이트 도입 검토 (현재는 source_count만 사용)
