@@ -13,6 +13,7 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] **merge-fix** trust 가중 list 병합 분모를 기여 소스로 한정 — abstain 소스 희석 제거, metadata_merge+facet_merge 동시 (2026-06-13)
 - [x] **D3** mediaX tmdb_movie_meta 테이블 + copyright guard — 0053 마이그레이션, _apply_copyright_guard(story 제거) (2026-06-13)
 - [x] **D2** include_meta 결합 플래그 — MultiSourceRunner.run(include_meta=True), Phase 1 docs 재사용 메타 추출 (2026-06-13)
 - [x] **D1** MediSearch postgres 재빌드 — SQLite→postgres 통일, ms_* 테이블 3개 (2026-06-13)
