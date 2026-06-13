@@ -214,6 +214,18 @@ print(f'  ✓ ms_* 테이블 {len(ms_tables)}개 생성됨')
 
     echo "=== PASS ==="
     ;;
+  merge-denominator-fix)
+    echo "=== merge-denominator-fix: list 병합 분모를 기여 소스로 한정 검증 ==="
+    # metadata_merge + facet_merge 회귀 — abstain 소스가 제공 소스를 희석하지 않음
+    $PYTEST tests/test_metadata_merge.py tests/test_facet_merge.py -q --tb=short 2>&1
+    STATUS=$?
+    [ $STATUS -ne 0 ] && exit 1
+    # total_trust(전체 분모) 잔재 제거 확인
+    grep -q "total_trust" pipeline/metadata_merge.py && { echo "FAIL: metadata_merge에 total_trust 잔존"; exit 1; }
+    grep -q "total_trust" pipeline/facet_merge.py && { echo "FAIL: facet_merge에 total_trust 잔존"; exit 1; }
+    echo "  ✓ 두 파일 total_trust 분모 제거 + contributing_trust 적용"
+    echo "=== PASS ==="
+    ;;
   all)
     $PYTEST tests/ -q --tb=short
     ;;

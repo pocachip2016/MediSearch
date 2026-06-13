@@ -69,16 +69,24 @@ def _best_trust_str(values_with_trust: list[tuple[str | None, float]]) -> str | 
 
 def _merge_list_by_trust(
     items_per_entry: list[tuple[list[str], float]],
-    total_trust: float,
     normalizer=None,
 ) -> list[str]:
-    """Σtrust ≥ 34% 기준 합집합. normalizer 있으면 정규화 후 집계."""
+    """Σtrust ≥ 34% 기준 합집합. 분모는 해당 필드를 제공한 소스의 trust 합.
+
+    필드를 비워둔(abstain) 소스의 trust는 분모에서 제외 — 미제공이 반대표로
+    작용해 제공 소스의 항목을 희석하는 것을 막는다. (예: TMDB가 genres를
+    매핑하지 않아도 KMDb의 장르가 탈락하지 않도록.)
+    normalizer 있으면 정규화 후 집계.
+    """
     item_trust: dict[str, float] = {}
+    contributing_trust = 0.0
     for items, trust in items_per_entry:
+        if items:
+            contributing_trust += trust
         for item in items:
             key = normalizer(item) if normalizer else item
             item_trust[key] = item_trust.get(key, 0.0) + trust
-    threshold = total_trust * _LIST_TRUST_RATIO
+    threshold = contributing_trust * _LIST_TRUST_RATIO
     return [item for item, t in item_trust.items() if t >= threshold]
 
 
@@ -127,7 +135,6 @@ def merge_metadata(
         merged["_provenance"] = {k: [pvdr[0]] for k in merged if merged[k] not in (None, [], {})}
         return attach_coverage(merged, st)
 
-    total_trust = sum(t for _, t in entries)
     provenance: dict[str, list[str]] = {}
     merged: dict = {}
 
@@ -171,19 +178,19 @@ def merge_metadata(
 
     # ── genres ───────────────────────────────────────────────
     g_per_entry = [([_normalize_genre(g) for g in e.get("genres", [])], t) for e, t in entries]
-    merged["genres"] = _merge_list_by_trust(g_per_entry, total_trust)
+    merged["genres"] = _merge_list_by_trust(g_per_entry)
     if merged["genres"]:
         provenance["genres"] = list(dict.fromkeys(pvdr[i] for i, (e, _) in enumerate(entries) if e.get("genres")))
 
     # ── countries ────────────────────────────────────────────
     c_per_entry = [([_normalize_country(c) for c in e.get("countries", [])], t) for e, t in entries]
-    merged["countries"] = _merge_list_by_trust(c_per_entry, total_trust)
+    merged["countries"] = _merge_list_by_trust(c_per_entry)
     if merged["countries"]:
         provenance["countries"] = list(dict.fromkeys(pvdr[i] for i, (e, _) in enumerate(entries) if e.get("countries")))
 
     # ── directors ────────────────────────────────────────────
     d_per_entry = [(e.get("directors", []), t) for e, t in entries]
-    merged["directors"] = _merge_list_by_trust(d_per_entry, total_trust)[:_MAX_DIRECTORS]
+    merged["directors"] = _merge_list_by_trust(d_per_entry)[:_MAX_DIRECTORS]
     if merged["directors"]:
         provenance["directors"] = list(dict.fromkeys(pvdr[i] for i, (e, _) in enumerate(entries) if e.get("directors")))
 

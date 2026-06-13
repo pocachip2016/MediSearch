@@ -77,6 +77,19 @@ def test_list_vocab_below_threshold_excluded():
     assert "복수" not in result["theme"]
 
 
+def test_list_vocab_abstaining_source_not_diluted():
+    """theme 미제공 소스(0.7)가 분모를 키워 제공 소스(0.3)를 탈락시키지 않음.
+
+    회귀: 분모를 total_trust(1.0)로 쓰면 threshold=0.34 > 0.3 으로 탈락하던 버그.
+    분모를 기여 소스(0.3)로 한정하면 threshold=0.102 → 채택.
+    2소스라 구조 outlier 제거(≥3) 미발동.
+    """
+    f1 = _f(theme=["성장"])             # theme 제공, trust 0.3
+    f2 = _f(primary_genre="드라마")      # theme 미제공(abstain), trust 0.7
+    result = merge_facets([(f1, 0.3), (f2, 0.7)])
+    assert "성장" in result["theme"]
+
+
 # ── 구조 outlier 제거 ────────────────────────────────────
 
 def test_structural_outlier_removed_with_three_sources():
