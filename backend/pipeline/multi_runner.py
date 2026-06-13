@@ -203,6 +203,7 @@ class MultiSourceRunner:
             "movie_query": sq.title,
             "facet": merged,
             "source_count": source_count,
+            "confidence": merged.get("confidence"),
             "facet_id": facet_id,
             "providers_detail": providers_detail,
         }
