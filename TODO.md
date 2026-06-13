@@ -1,7 +1,6 @@
 # MediSearch — TODO
 
 ## Now
-- [x] **tmdb-authoritative-genre** TMDB genre_ids 노출 + metadata TMDB-first + facet 장르 그라운딩 (2026-06-13)
 
 ## Next
 - [ ] confidence 기반 품질 게이트 도입 검토 (현재는 source_count만 사용)
@@ -15,6 +14,7 @@
 - [ ] Docker 컨테이너화 (완료) → Kubernetes 검토
 
 ## Done
+- [x] **tmdb-authoritative-genre** TMDB genre_ids 노출 + metadata TMDB-first + facet 장르 그라운딩, 라이브 검증 3건 + 1,045건 백필 (2026-06-13)
 - [x] **facet-confidence-contract** top-level confidence 미러 추가 — MovieEvaluateResponse + multi_runner result dict, mediaX 계약 불일치 해소 (2026-06-13)
 - [x] **llm-unavailable-guard** 모델 14b→7b + OllamaUnavailableError 인프라 실패 전파 가드 (2026-06-13)
 - [x] **merge-fix** trust 가중 list 병합 분모를 기여 소스로 한정 — abstain 소스 희석 제거, metadata_merge+facet_merge 동시 (2026-06-13)
