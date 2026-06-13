@@ -154,19 +154,21 @@ class TestEvaluationEngine:
         assert result["confidence"] == 0.0
 
     @pytest.mark.asyncio
-    async def test_evaluate_ollama_error_returns_empty_facet(self, sample_docs):
+    async def test_evaluate_ollama_infra_error_propagates(self, sample_docs):
+        """인프라 실패(연결거부)는 빈 facet으로 삼키지 않고 전파 — 빈 success 영속 차단."""
+        import httpx
+        from pipeline.ollama_client import OllamaUnavailableError
+
         engine = EvaluationEngine()
 
         with patch("pipeline.ollama_client.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.post = AsyncMock(side_effect=Exception("connection refused"))
+            mock_client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            result = await engine.evaluate("기생충", sample_docs)
-
-        assert result["primary_genre"] is None
-        assert "_coverage" in result
+            with pytest.raises(OllamaUnavailableError):
+                await engine.evaluate("기생충", sample_docs)
 
     @pytest.mark.asyncio
     async def test_evaluate_invalid_json_returns_empty_facet(self, sample_docs):

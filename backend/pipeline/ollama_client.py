@@ -15,6 +15,14 @@ from shared.config import settings
 logger = logging.getLogger(__name__)
 
 
+class OllamaUnavailableError(RuntimeError):
+    """Ollama 인프라 실패 — 모델 미설치(404)·연결거부·타임아웃 등.
+
+    '정당한 빈/파싱불가 응답'(모델은 돌았으나 결과 무의미)과 구분한다.
+    이 예외는 swallow 금지 — 파이프라인을 실패시켜 빈 facet의 'success' 영속을 막는다.
+    """
+
+
 async def generate_json(
     prompt: str,
     *,
@@ -46,11 +54,13 @@ async def generate_json(
             resp = await client.post(f"{_base}/api/generate", json=payload)
             resp.raise_for_status()
             text = resp.json().get("response", "")
-            return json.loads(text)
-    except httpx.HTTPError as e:
-        logger.error(f"[ollama_client] HTTP 오류: {e}")
+    except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        # 인프라 실패(404 모델 미설치·연결거부·타임아웃) — 전파해 파이프라인 실패 처리
+        logger.error(f"[ollama_client] Ollama 불능: {e!r} (model={_model})")
+        raise OllamaUnavailableError(f"{e!r} (model={_model})") from e
+    # 여기부터는 모델이 실제 응답함 — 빈/파싱불가는 정당한 degrade(None 반환)
+    try:
+        return json.loads(text)
     except json.JSONDecodeError as e:
-        logger.error(f"[ollama_client] JSON 파싱 실패: {e}")
-    except Exception as e:
-        logger.error(f"[ollama_client] 예외: {e}")
-    return None
+        logger.warning(f"[ollama_client] JSON 파싱 실패(빈 응답 취급): {e}")
+        return None
