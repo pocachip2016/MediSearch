@@ -1,11 +1,14 @@
 """tests/test_multi_runner.py — MultiSourceRunner + provider_factory 테스트."""
+import asyncio
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.orm import Session
 
-from models import MovieFacet, SearchSource
+from models import MovieFacet, MovieMeta, SearchSource
 from pipeline.evaluator import EvaluationEngine
+from pipeline.metadata_extractor import MetadataExtractionEngine
 from pipeline.multi_runner import MultiSourceRunner
 from search.base import SearchProvider, SourceDocument, SourceType
 from search.provider_factory import build_providers
@@ -24,6 +27,8 @@ def mock_db():
             obj.id = facet_counter[0]
 
     db.add.side_effect = add_side_effect
+    # 기본 캐시 미스 — 캐시 히트 테스트에서는 개별 override
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
     return db
 
 
@@ -72,6 +77,46 @@ def test_build_providers_unknown_skipped():
 
 def test_build_providers_empty():
     assert build_providers([]) == []
+
+
+# ── provider track separation ────────────────────────────────
+
+def test_interactive_providers_excludes_playwright(monkeypatch):
+    """INTERACTIVE_PROVIDERS는 playwright를 포함하지 않아야 한다."""
+    monkeypatch.setattr("shared.config.settings.INTERACTIVE_PROVIDERS", "tmdb,kmdb,omdb,wikipedia,kowiki")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "")
+    from main import _get_interactive_provider_names
+    names = _get_interactive_provider_names()
+    assert "playwright" not in names
+    assert "tmdb" in names
+
+
+def test_backfill_providers_includes_playwright(monkeypatch):
+    """BACKFILL_PROVIDERS는 playwright를 포함해야 한다."""
+    monkeypatch.setattr("shared.config.settings.BACKFILL_PROVIDERS", "tmdb,kmdb,playwright,wikipedia,kowiki,omdb")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "")
+    from main import _get_backfill_provider_names
+    names = _get_backfill_provider_names()
+    assert "playwright" in names
+    assert "tmdb" in names
+
+
+def test_backfill_fallback_to_search_providers(monkeypatch):
+    """BACKFILL_PROVIDERS 비어있으면 SEARCH_PROVIDERS 폴백."""
+    monkeypatch.setattr("shared.config.settings.BACKFILL_PROVIDERS", "")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "fixture,playwright")
+    from main import _get_backfill_provider_names
+    names = _get_backfill_provider_names()
+    assert names == ["fixture", "playwright"]
+
+
+def test_interactive_fallback_to_search_providers(monkeypatch):
+    """INTERACTIVE_PROVIDERS 비어있으면 SEARCH_PROVIDERS 폴백."""
+    monkeypatch.setattr("shared.config.settings.INTERACTIVE_PROVIDERS", "")
+    monkeypatch.setattr("shared.config.settings.SEARCH_PROVIDERS", "fixture,tmdb")
+    from main import _get_interactive_provider_names
+    names = _get_interactive_provider_names()
+    assert names == ["fixture", "tmdb"]
 
 
 # ── MultiSourceRunner ────────────────────────────────────────
@@ -173,6 +218,44 @@ async def test_multi_runner_persist_false_no_db_write(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_multi_runner_concurrent_search(mock_db):
+    """느린 provider가 빠른 provider의 SSE 방출을 막지 않음 (동시 실행 검증)."""
+    arrival_order: list[str] = []
+
+    slow = MagicMock(spec=SearchProvider)
+    slow.provider_name = "slow"
+
+    async def slow_search(q, num=5):
+        await asyncio.sleep(0.05)
+        arrival_order.append("slow")
+        return [_doc("slow")]
+    slow.search = slow_search
+
+    fast = MagicMock(spec=SearchProvider)
+    fast.provider_name = "fast"
+
+    async def fast_search(q, num=5):
+        arrival_order.append("fast")
+        return [_doc("fast")]
+    fast.search = fast_search
+
+    ev = _make_evaluator()
+    runner = MultiSourceRunner([slow, fast], ev, mock_db)
+
+    events: list[str] = []
+
+    async def cb(event_type, payload):
+        if event_type == "provider_search":
+            events.append(payload["provider"])
+
+    await runner.run("테스트", on_event=cb)
+
+    # 동시 실행: fast가 slow보다 먼저 완료·이벤트 방출
+    assert "fast" in events and "slow" in events
+    assert events.index("fast") < events.index("slow")
+
+
+@pytest.mark.asyncio
 async def test_multi_runner_trust_weighted(mock_db):
     """trust_score 반영 — high trust provider 값이 score 에 더 반영되는지 확인."""
     p_high = _make_provider("high", [_doc("high", trust=0.95)])
@@ -199,3 +282,151 @@ async def test_multi_runner_trust_weighted(mock_db):
     merged_tension = result["facet"].get("tension")
     if merged_tension is not None:
         assert merged_tension > 0.5
+
+
+# ── derived-cache 테스트 ──────────────────────────────────────────────────────
+
+def _make_fresh_facet(tmdb_id=96316, movie_query="기생충"):
+    row = MagicMock(spec=MovieFacet)
+    row.id = 42
+    row.tmdb_id = tmdb_id
+    row.movie_query = movie_query
+    row.facet_json = {"primary_genre": "드라마", "tension": 0.8, "_coverage": {}}
+    row.source_count = 3
+    row.created_at = datetime.utcnow() - timedelta(days=1)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_returns_cached_facet(mock_db):
+    """DB에 fresh facet → 파이프라인 스킵, cached=True 반환."""
+    fresh = _make_fresh_facet()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([], ev, mock_db)
+    result = await runner.run("기생충", force_refresh=False)
+
+    assert result["cached"] is True
+    assert result["facet_id"] == 42
+    ev.evaluate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_runs_pipeline(mock_db):
+    """캐시 미스(None) → 파이프라인 실행."""
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = None
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충")
+
+    assert result.get("cached", False) is False
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_skips_cache(mock_db):
+    """force_refresh=True → fresh 캐시 있어도 파이프라인 실행."""
+    fresh = _make_fresh_facet()
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = fresh
+
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "fixture"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충", force_refresh=True)
+
+    assert result.get("cached", False) is False
+
+
+# ── include_meta 결합 플래그 테스트 ──────────────────────────────────────────
+
+def _make_structured_doc(provider_name="tmdb"):
+    doc = MagicMock(spec=SourceDocument)
+    doc.url = f"https://{provider_name}.example/1"
+    doc.title = "기생충"
+    doc.source_domain = provider_name
+    doc.source_type = SourceType.synopsis
+    doc.trust_score = 0.95
+    doc.meta = {
+        "content_type": "movie",
+        "production_year": 2019,
+        "genres": ["드라마", "스릴러"],
+        "directors": ["봉준호"],
+        "cast": [],
+        "countries": ["한국"],
+        "original_title": "Parasite",
+    }
+    doc.text = ""
+    return doc
+
+
+@pytest.mark.asyncio
+async def test_include_meta_returns_metadata(mock_db):
+    """include_meta=True → result에 metadata/meta_id 키 포함."""
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "tmdb"
+    p.search = AsyncMock(return_value=[_make_structured_doc()])
+    ev = MagicMock(spec=EvaluationEngine)
+    ev.evaluate = AsyncMock(return_value={"primary_genre": "드라마", "tension": 0.7, "_coverage": {}, "confidence": 0.6})
+
+    extractor = MagicMock(spec=MetadataExtractionEngine)
+
+    meta_counter = [0]
+
+    def add_side_effect(obj):
+        if isinstance(obj, MovieFacet):
+            obj.id = 1
+        elif isinstance(obj, MovieMeta):
+            meta_counter[0] += 1
+            obj.id = meta_counter[0]
+
+    mock_db.add.side_effect = add_side_effect
+
+    runner = MultiSourceRunner([p], ev, mock_db, extractor=extractor)
+    result = await runner.run("기생충", include_meta=True)
+
+    assert "metadata" in result
+    assert "meta_id" in result
+    assert isinstance(result["metadata"], dict)
+
+
+@pytest.mark.asyncio
+async def test_include_meta_false_no_metadata_key(mock_db):
+    """include_meta=False(기본) → metadata 키 없음."""
+    p = MagicMock(spec=SearchProvider)
+    p.provider_name = "tmdb"
+    p.search = AsyncMock(return_value=[])
+    ev = MagicMock(spec=EvaluationEngine)
+
+    runner = MultiSourceRunner([p], ev, mock_db)
+    result = await runner.run("기생충")
+
+    assert "metadata" not in result
+
+
+@pytest.mark.asyncio
+async def test_include_meta_cache_hit_with_meta_cache(mock_db):
+    """facet 캐시 히트 + meta 캐시 히트 → metadata 즉시 반환."""
+    fresh_facet = _make_fresh_facet()
+    fresh_meta = MagicMock(spec=MovieMeta)
+    fresh_meta.id = 99
+    fresh_meta.meta_json = {"content_type": "movie", "production_year": 2019, "_coverage": {}}
+
+    # first() 호출 순서: facet 캐시 → meta 캐시
+    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.side_effect = [
+        fresh_facet, fresh_meta
+    ]
+
+    ev = MagicMock(spec=EvaluationEngine)
+    extractor = MagicMock(spec=MetadataExtractionEngine)
+    runner = MultiSourceRunner([], ev, mock_db, extractor=extractor)
+    result = await runner.run("기생충", include_meta=True)
+
+    assert result["cached"] is True
+    assert result["metadata"] == fresh_meta.meta_json
+    assert result["meta_id"] == 99

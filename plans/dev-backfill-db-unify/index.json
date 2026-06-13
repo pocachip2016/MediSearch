@@ -1,0 +1,28 @@
+{
+  "task": "dev-backfill-db-unify",
+  "title": "Backfill DB 통일 + 기본메타 테이블 + 저작권 가드",
+  "created": "2026-06-13",
+  "steps": [
+    {
+      "id": "D1",
+      "name": "medisearch-postgres-rebuild",
+      "status": "completed",
+      "summary": "postgres 재빌드 완료 — engine.url 검증 + ms_* 테이블 3개 생성 확인, CLAUDE.md 저작권 원칙 추가",
+      "completed_at": "2026-06-13T08:30:00+09:00"
+    },
+    {
+      "id": "D2",
+      "name": "include-meta-combined-flag",
+      "status": "completed",
+      "summary": "MultiSourceRunner.run(include_meta=True) — Phase 1 docs 재사용 메타 추출 + extractor 주입 + MovieEvaluateRequest/Response 필드 추가 + 테스트 3개 pass",
+      "completed_at": "2026-06-13T00:00:00+09:00"
+    },
+    {
+      "id": "D3",
+      "name": "mediax-tmdb-movie-meta",
+      "status": "completed",
+      "summary": "tmdb_movie_meta 테이블(0053) + TmdbMovieMeta 모델 + _apply_copyright_guard(story 제거) + include_meta=True 페이로드 + _upsert_tmdb_meta",
+      "completed_at": "2026-06-13T00:00:00+09:00"
+    }
+  ]
+}

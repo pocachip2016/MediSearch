@@ -48,17 +48,27 @@ class TestBestTrustStr:
 
 class TestMergeListByTrust:
     def test_threshold_adoption(self):
-        # total_trust=1.0, threshold=0.34 → trust>=0.34 채택
+        # 기여 trust 합=1.4, threshold=0.476 → 채택
         items = [(["액션", "드라마"], 0.9), (["드라마", "코미디"], 0.5)]
-        result = _merge_list_by_trust(items, total_trust=1.4)
+        result = _merge_list_by_trust(items)
         assert "드라마" in result   # 0.9+0.5=1.4 ≥ 0.476 (34%)
         assert "액션" in result     # 0.9 ≥ 0.476
 
     def test_low_trust_rejected(self):
         items = [(["희귀장르"], 0.1), (["공포"], 0.9)]
-        result = _merge_list_by_trust(items, total_trust=1.0)
-        assert "희귀장르" not in result
+        result = _merge_list_by_trust(items)
+        assert "희귀장르" not in result   # 0.1 < 1.0*0.34
         assert "공포" in result
+
+    def test_abstaining_source_does_not_dilute(self):
+        """필드를 비워둔 소스(빈 리스트)는 분모에서 제외 — 제공 소스 항목 보존.
+
+        회귀: 기생충 genres가 TMDB(미제공) 2건 + KMDb([드라마]) 조합에서
+        total_trust 분모(2.51) 때문에 0.85 < 0.853 으로 탈락하던 버그.
+        """
+        items = [([], 0.95), ([], 0.71), (["드라마"], 0.85)]
+        result = _merge_list_by_trust(items)
+        assert result == ["드라마"]   # 기여 trust=0.85, threshold=0.289
 
 
 class TestMergeCast:
@@ -134,6 +144,22 @@ class TestMergeMetadata:
         m = merge_metadata([(e1, 0.8), (e2, 0.8)])
         # 정규화 후 같은 "액션"으로 집계
         assert m["genres"].count("액션") == 1
+
+    def test_genres_not_diluted_by_abstaining_providers(self):
+        """회귀: genres 미제공 provider가 분모를 키워 KMDb 장르를 탈락시키지 않음.
+
+        실제 기생충 시나리오 — TMDB 2건(genres 미매핑) + KMDb([드라마]).
+        """
+        tmdb1 = _meta(content_type="movie", production_year=2019)        # genres 없음
+        tmdb2 = _meta(content_type="movie", production_year=2019)        # genres 없음
+        kmdb = _meta(content_type="movie", production_year=2019, genres=["드라마"], countries=["대한민국"])
+        m = merge_metadata(
+            [(tmdb1, 0.95), (tmdb2, 0.71), (kmdb, 0.85)],
+            provider_names=["tmdb", "tmdb", "kmdb"],
+        )
+        assert m["genres"] == ["드라마"]
+        assert m["countries"] == ["대한민국"]
+        assert "kmdb" in m["_provenance"]["genres"]
 
     def test_provenance_generated(self):
         e1 = _meta(content_type="movie", genres=["드라마"])

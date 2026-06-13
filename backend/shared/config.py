@@ -5,8 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Database — POC 로컬 기본 SQLite
-    DATABASE_URL: str = "sqlite:///./medisearch_dev.db"
+    # MediSearch own tables (ms_*) — same media_ax DB, PostgreSQL
+    DATABASE_URL: str = (
+        "postgresql+psycopg2://media_ax:x31sFEebPbyFtHMf7S6O1Ost@host.docker.internal:5432/media_ax"
+    )
 
     # mediaX Postgres (읽기 전용) — TMDB/KMDb 캐시 소스
     # Docker 컨테이너 → host.docker.internal, 호스트 직접 실행 → localhost
@@ -19,6 +21,12 @@ class Settings(BaseSettings):
     # 앙상블 멀티소스 (콤마 구분) — 비우면 SEARCH_PROVIDER 단일 동작
     # 예: "tmdb,kmdb,playwright"
     SEARCH_PROVIDERS: str = ""
+
+    # 트랙 분리 — 대화형(즉답) vs backfill(배치)
+    # INTERACTIVE: playwright 제외 — 빠른 구조화+API provider만 (~1–2초)
+    INTERACTIVE_PROVIDERS: str = "tmdb,kmdb,omdb,wikipedia,kowiki"
+    # BACKFILL: 전체 포함 (playwright+Ollama) — 배치 워커 전용
+    BACKFILL_PROVIDERS: str = "tmdb,kmdb,playwright,wikipedia,kowiki,omdb"
 
     # LLM — Ollama 로컬 (POC 기본)
     OLLAMA_URL: str = "http://localhost:11434"

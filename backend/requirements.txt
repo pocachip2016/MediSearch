@@ -20,6 +20,7 @@ playwright==1.40.0
 # Web Scraping
 scrapy==2.11.0
 beautifulsoup4==4.12.2
+lxml==5.2.2
 requests==2.31.0
 
 # Task Queue (optional)

@@ -87,7 +87,6 @@ def merge_facets(
     clean = _remove_structural_outliers(entries)
 
     trusts = [t for _, t in clean]
-    total_trust = sum(trusts)
 
     # ── 2) score MAD 마킹 ────────────────────────────────────
     score_cols: dict[str, list[float | None]] = {
@@ -121,12 +120,18 @@ def merge_facets(
         merged[field] = max(vote, key=vote.__getitem__) if vote else None
 
     # ── 3c) list vocab: Σtrust ≥ 34% 채택 ───────────────────
+    # 분모는 해당 필드를 제공한 소스의 trust 합 — 필드를 비워둔(abstain) 소스가
+    # 분모를 키워 제공 소스의 항목을 희석하지 않도록 한다.
     for field in LIST_VOCAB:
         item_trust: dict[str, float] = {}
+        contributing_trust = 0.0
         for (facet, trust) in clean:
-            for item in facet.get(field) or []:
+            items = facet.get(field) or []
+            if items:
+                contributing_trust += trust
+            for item in items:
                 item_trust[item] = item_trust.get(item, 0.0) + trust
-        threshold = total_trust * _LIST_TRUST_RATIO
+        threshold = contributing_trust * _LIST_TRUST_RATIO
         merged[field] = [item for item, t in item_trust.items() if t >= threshold]
 
     # ── 3d) free list: 빈도 상위 N ───────────────────────────

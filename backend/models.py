@@ -27,7 +27,7 @@ class SearchSource(Base):
 
     원본 텍스트는 파이프라인 통과 후 폐기되며, 재필요 시 url로 재검색한다.
     """
-    __tablename__ = "search_sources"
+    __tablename__ = "ms_search_sources"
 
     id = Column(Integer, primary_key=True)
     movie_query = Column(String(300), index=True, nullable=False)
@@ -42,9 +42,10 @@ class SearchSource(Base):
 
 class MovieFacet(Base):
     """로컬 평가로 생성된 영화 facet (생성 데이터만 저장)."""
-    __tablename__ = "movie_facets"
+    __tablename__ = "ms_movie_facets"
 
     id = Column(Integer, primary_key=True)
+    tmdb_id = Column(Integer, nullable=True, index=True)
     movie_query = Column(String(300), index=True, nullable=False)
     facet_json = Column(JSON, nullable=False)  # validate_movie_facet 통과 결과
     sentiment_score = Column(Float, nullable=True)  # 0.0~1.0
@@ -58,9 +59,10 @@ class MovieMeta(Base):
 
     원문 시놉시스 저장 안 함 — story(≤60자 재작성)만.
     """
-    __tablename__ = "movie_meta"
+    __tablename__ = "ms_movie_meta"
 
     id = Column(Integer, primary_key=True)
+    tmdb_id = Column(Integer, nullable=True, index=True)
     movie_query = Column(String(300), index=True, nullable=False)
     meta_json = Column(JSON, nullable=False)   # validate_metadata 통과 결과
     llm_engine = Column(String(50), nullable=True)
