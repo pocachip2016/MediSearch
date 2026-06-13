@@ -109,6 +109,7 @@ class MovieEvaluateResponse(BaseModel):
     movie_query: str
     facet: dict
     source_count: int
+    confidence: float | None = None  # facet.confidence 미러 — 소비자 편의용 top-level 노출
     facet_id: int | None = None
     content_id: int | None = None
     error: str | None = None
