@@ -24,5 +24,8 @@
       "summary": "tmdb_movie_meta 테이블(0053) + TmdbMovieMeta 모델 + _apply_copyright_guard(story 제거) + include_meta=True 페이로드 + _upsert_tmdb_meta",
       "completed_at": "2026-06-13T00:00:00+09:00"
     }
-  ]
+  ],
+  "github_issue": 4,
+  "github_milestone": 1,
+  "synced_at": "2026-06-20T08:56:29+09:00"
 }
