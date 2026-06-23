@@ -22,7 +22,9 @@
     {
       "id": "N3",
       "name": "contamination-scan-reset",
-      "status": "pending"
+      "status": "completed",
+      "summary": "오염 스캔 스크립트 dry-run + verify 완료 — 현재 DB 오염 없음 (N1 제목검증게이트 이후 신규 데이터는 자동 차단)",
+      "completed_at": "2026-06-23T14:00:00+09:00"
     }
   ],
   "github_issue": 6,

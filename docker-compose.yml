@@ -6,10 +6,17 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: medisearch-api
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8000"
     networks:
       - default
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     environment:
       - ENV=development
       - DATABASE_URL=postgresql+psycopg2://media_ax:x31sFEebPbyFtHMf7S6O1Ost@host.docker.internal:5432/media_ax
@@ -30,7 +37,7 @@ services:
     volumes:
       - ./:/app
     working_dir: /app/backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

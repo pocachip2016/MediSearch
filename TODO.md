@@ -1,9 +1,9 @@
 # MediSearch — TODO
 
 ## Now
+- [ ] confidence 기반 품질 게이트 도입 검토 (현재는 source_count만 사용)
 
 ## Next
-- [ ] confidence 기반 품질 게이트 도입 검토 (현재는 source_count만 사용)
 - [ ] Scrapy 통합 검토 (서버렌더 신규 소스 — IMDb 등, namu는 불가)
 - [ ] 추가 크롤러 (IMDb, Rotten Tomatoes)
 
